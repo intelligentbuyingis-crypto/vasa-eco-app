@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --green-dark: #1a3a2a;
+  --green-mid: #2d6645;
+  --green-light: #e8f4ed;
+}
+
+* { box-sizing: border-box; }
+
+body { font-family: 'Segoe UI', Tahoma, sans-serif; }
+
+input, select, textarea {
+  @apply border border-gray-200 rounded-lg px-3 py-2 text-sm w-full outline-none bg-white;
+  transition: border-color 0.15s;
+}
+input:focus, select:focus, textarea:focus {
+  @apply border-green-600 ring-1 ring-green-100;
+}
+
+button {
+  @apply cursor-pointer;
+}
+
+.btn-primary {
+  @apply bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors;
+}
+.btn-secondary {
+  @apply border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors;
+}
+.btn-danger {
+  @apply border border-red-200 text-red-600 px-3 py-1.5 rounded-lg text-sm hover:bg-red-50 transition-colors;
+}
+
+.card {
+  @apply bg-white border border-gray-100 rounded-xl p-4 shadow-sm;
+}
+
+.section-title {
+  @apply text-sm font-medium text-gray-700 mb-3;
+}
+
+.field-label {
+  @apply text-xs text-gray-500 mb-1 block;
+}
+
+/* Tablet table styles */
+.form-table { @apply w-full border-collapse text-xs; }
+.form-table th { @apply bg-gray-50 border border-gray-200 px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap; }
+.form-table td { @apply border border-gray-200 px-1 py-1; }
+.form-table input { @apply border-0 rounded-none text-xs p-1 text-center bg-transparent; }
+.form-table input:focus { @apply bg-green-50 ring-0 border-0; }

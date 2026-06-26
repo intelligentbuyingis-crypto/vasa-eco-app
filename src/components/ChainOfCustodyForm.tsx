@@ -5,6 +5,7 @@ import type { FieldJournalData, ChainOfCustodyData, SampleRow } from "@/types/fo
 import { LAB_TESTS, SAMPLING_TOOLS, WEATHER } from "@/types/forms";
 import CircleSelect from "./CircleSelect";
 import SignaturePad from "./SignaturePad";
+import { generateChainPdf } from "@/lib/generatePdf";
 
 type Props = {
   user: User;
@@ -12,6 +13,10 @@ type Props = {
   onBack: () => void;
   onDone: () => void;
 };
+
+const LAB_OPTIONS = ["מעבדה ראשית", "מעבדה משנית", "ללא"];
+
+const OFFICE_EMAIL = "office@vasa-eco.co.il"; // ← תעדכן עם המייל האמיתי
 
 const initFromField = (user: User, field?: FieldJournalData): ChainOfCustodyData => ({
   site: field?.site ?? "",
@@ -40,7 +45,7 @@ const initFromField = (user: User, field?: FieldJournalData): ChainOfCustodyData
   storageCondition: "",
   deliveredBy: user.name,
   deliveryDate: new Date().toISOString().split("T")[0],
-  deliveryTime: "",
+  deliveryTime: new Date().toTimeString().slice(0, 5),
   receivedBy: "",
   receivedDate: "",
   receivedTime: "",
@@ -48,35 +53,112 @@ const initFromField = (user: User, field?: FieldJournalData): ChainOfCustodyData
   samples: field?.samples ?? [],
 });
 
+// Required field definitions per step
+const REQUIRED_HEADER = [
+  { key: "site", label: "שם האתר" },
+  { key: "date", label: "תאריך" },
+  { key: "samplerName", label: "שם הדוגם" },
+];
+
+function RequiredNote({ label }: { label: string }) {
+  return (
+    <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+      <span>⚠</span> שדה חובה: <strong>{label}</strong> חייב להיות מלא להמשך
+    </p>
+  );
+}
+
 export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: Props) {
   const [data, setData] = useState<ChainOfCustodyData>(() => initFromField(user, fieldData));
   const [step, setStep] = useState<"header" | "samples" | "sign">("header");
+  const [labSignature, setLabSignature] = useState("");
+  const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [headerErrors, setHeaderErrors] = useState<string[]>([]);
+  const [signErrors, setSignErrors] = useState<string[]>([]);
+  const [customEmail, setCustomEmail] = useState(OFFICE_EMAIL);
+  const [emailSent, setEmailSent] = useState(false);
 
   const set = (k: keyof ChainOfCustodyData, v: string | string[]) =>
     setData(d => ({ ...d, [k]: v }));
 
+  // Labs
+  const labsArray = data.lab ? data.lab.split(",").filter(Boolean) : [];
+  const toggleLab = (opt: string) => {
+    if (opt === "ללא") { set("lab", labsArray.includes("ללא") ? "" : "ללא"); return; }
+    const without = labsArray.filter(l => l !== "ללא");
+    const next = without.includes(opt) ? without.filter(l => l !== opt) : [...without, opt];
+    set("lab", next.join(","));
+  };
+
   const toggleTest = (t: string) =>
-    setData(d => ({
-      ...d,
-      tests: d.tests.includes(t) ? d.tests.filter(x => x !== t) : [...d.tests, t]
-    }));
+    setData(d => ({ ...d, tests: d.tests.includes(t) ? d.tests.filter(x => x !== t) : [...d.tests, t] }));
 
   const toggleSend = (id: string) =>
-    setData(d => ({
-      ...d,
-      samples: d.samples.map(s => s.id === id ? { ...s, sendToLab: !s.sendToLab } : s)
-    }));
+    setData(d => ({ ...d, samples: d.samples.map(s => s.id === id ? { ...s, sendToLab: !s.sendToLab } : s) }));
 
   const updateSampleTool = (id: string, v: string) =>
-    setData(d => ({
-      ...d,
-      samples: d.samples.map(s => s.id === id ? { ...s, notes: v } : s)
-    }));
+    setData(d => ({ ...d, samples: d.samples.map(s => s.id === id ? { ...s, notes: v } : s) }));
 
-  const handleSubmit = () => {
+  // Validate header required fields
+  const validateHeader = () => {
+    const errs = REQUIRED_HEADER.filter(f => !data[f.key as keyof ChainOfCustodyData]).map(f => f.label);
+    setHeaderErrors(errs);
+    return errs.length === 0;
+  };
+
+  // Validate sign step
+  const validateSign = () => {
+    const errs: string[] = [];
+    if (!data.signature) errs.push("חתימת הדוגם");
+    if (!data.deliveredBy) errs.push("שם הממסר");
+    setSignErrors(errs);
+    return errs.length === 0;
+  };
+
+  const handleGeneratePdf = async () => {
+    if (!validateSign()) return;
+    setGenerating(true);
+    try {
+      const bytes = await generateChainPdf(data, labSignature || undefined);
+      setPdfBytes(bytes);
+      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
+    } catch (e) {
+      console.error(e);
+    }
+    setGenerating(false);
+  };
+
+  const handleDownload = () => {
+    if (!pdfUrl) return;
+    const a = document.createElement("a");
+    a.href = pdfUrl;
+    const dateStr = data.date.replace(/-/g, "");
+    a.download = `שרשרת_משמורת_${data.site || "ללא_שם"}_${dateStr}.pdf`;
+    a.click();
+  };
+
+  const handleEmail = () => {
+    if (!pdfUrl) return;
+    // mailto with subject — attachment not possible via mailto, so we open mail client
+    // For real send, a backend API route would be needed
+    const subject = encodeURIComponent(`שרשרת משמורת · ${data.site} · ${data.date}`);
+    const body = encodeURIComponent(
+      `שלום,\n\nמצורף דוח שרשרת משמורת:\nאתר: ${data.site}\nתאריך: ${data.date}\nדוגם: ${data.samplerName}\nדגימות: ${data.samples.filter(s => s.sendToLab).length}\n\nהדו"ח נוצר אוטומטית ממערכת דיגום השדה.`
+    );
+    window.open(`mailto:${customEmail}?subject=${subject}&body=${body}`);
+    // Also trigger download so they can attach manually
+    handleDownload();
+    setEmailSent(true);
+  };
+
+  const handleDone = () => {
     setSubmitted(true);
-    setTimeout(() => { onDone(); }, 2500);
+    setTimeout(onDone, 2000);
   };
 
   if (submitted) return (
@@ -88,7 +170,7 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
           </svg>
         </div>
         <h2 className="text-xl font-medium mb-2">הטפסים הושלמו!</h2>
-        <p className="text-green-300 text-sm">יומן שדה ושרשרת משמורת נשמרו</p>
+        <p className="text-green-300 text-sm">שרשרת משמורת נשמרה בהצלחה</p>
         <p className="text-green-400 text-xs mt-1">חוזר לדף הבית...</p>
       </div>
     </div>
@@ -110,8 +192,9 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
           {(["header","samples","sign"] as const).map((s, i) => (
             <div key={s} className={`w-6 h-6 rounded-full text-xs flex items-center justify-center border ${
               step === s ? "bg-white text-green-900 border-white" :
-              (step === "samples" && s === "header") || (step === "sign") ? "bg-green-700 border-green-600 text-green-200" :
-              "border-green-700 text-green-500"
+              (step === "samples" && s === "header") || step === "sign"
+                ? "bg-green-700 border-green-600 text-green-200"
+                : "border-green-700 text-green-500"
             }`}>{i+1}</div>
           ))}
         </div>
@@ -119,22 +202,50 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
 
       <div className="p-4 max-w-3xl mx-auto pb-24">
 
+        {/* ─── STEP 1: Header ─── */}
         {step === "header" && (
           <div className="space-y-4">
+
+            {/* Required fields notice */}
+            <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-2.5 flex items-start gap-2">
+              <span className="text-red-400 text-sm mt-0.5">*</span>
+              <p className="text-red-500 text-xs">שדות המסומנים ב-<strong>*</strong> הם שדות חובה ויש למלא אותם לפני המשך</p>
+            </div>
+
             <div className="card">
               <p className="section-title">פרטי הטופס</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <label className="field-label">האתר *</label>
-                  <input value={data.site} onChange={e => set("site", e.target.value)} placeholder="שם האתר" />
+                  <label className="field-label">האתר <span className="text-red-500">*</span></label>
+                  <input
+                    value={data.site}
+                    onChange={e => { set("site", e.target.value); setHeaderErrors(p => p.filter(e => e !== "שם האתר")); }}
+                    placeholder="שם האתר"
+                    className={!data.site && headerErrors.includes("שם האתר") ? "border-red-400 bg-red-50" : ""}
+                  />
+                  {!data.site && headerErrors.includes("שם האתר") && <RequiredNote label="שם האתר" />}
                 </div>
                 <div>
-                  <label className="field-label">תאריך</label>
-                  <input type="date" value={data.date} onChange={e => set("date", e.target.value)} />
+                  <label className="field-label">תאריך <span className="text-red-500">*</span></label>
+                  <input type="date" value={data.date} onChange={e => set("date", e.target.value)}
+                    className={!data.date && headerErrors.includes("תאריך") ? "border-red-400 bg-red-50" : ""}
+                  />
                 </div>
-                <div>
-                  <label className="field-label">מעבדה</label>
-                  <CircleSelect options={["מעבדה ראשית","מעבדה משנית"]} value={data.lab} onChange={v => set("lab", v)} />
+                <div className="col-span-2">
+                  <label className="field-label">מעבדה (ניתן לבחור יותר מאחת)</label>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {LAB_OPTIONS.map(opt => (
+                      <button key={opt} type="button" onClick={() => toggleLab(opt)}
+                        className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${
+                          labsArray.includes(opt)
+                            ? opt === "ללא" ? "bg-gray-600 text-white border-gray-600" : "bg-green-800 text-white border-green-800"
+                            : "bg-white text-gray-600 border-gray-200"
+                        }`}>
+                        {labsArray.includes(opt) ? "✓ " : ""}{opt}
+                      </button>
+                    ))}
+                  </div>
+                  {labsArray.length > 0 && <p className="text-xs text-gray-400 mt-1">נבחר: {labsArray.join(", ")}</p>}
                 </div>
                 <div className="col-span-2">
                   <label className="field-label">כתובת</label>
@@ -149,7 +260,7 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
                   <input value={data.landUse} onChange={e => set("landUse", e.target.value)} placeholder="מגורים / תעשייה..." />
                 </div>
                 <div>
-                  <label className="field-label">מפלס מי תהום (משוער)</label>
+                  <label className="field-label">מפלס מי תהום</label>
                   <input value={data.groundwaterLevel} onChange={e => set("groundwaterLevel", e.target.value)} placeholder="מטר" />
                 </div>
                 <div>
@@ -167,8 +278,12 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
               <p className="section-title">אנשים</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">שם הדוגם</label>
-                  <input value={data.samplerName} onChange={e => set("samplerName", e.target.value)} />
+                  <label className="field-label">שם הדוגם <span className="text-red-500">*</span></label>
+                  <input value={data.samplerName}
+                    onChange={e => { set("samplerName", e.target.value); setHeaderErrors(p => p.filter(e => e !== "שם הדוגם")); }}
+                    className={!data.samplerName && headerErrors.includes("שם הדוגם") ? "border-red-400 bg-red-50" : ""}
+                  />
+                  {!data.samplerName && headerErrors.includes("שם הדוגם") && <RequiredNote label="שם הדוגם" />}
                 </div>
                 <div>
                   <label className="field-label">מאשר הדו"ח</label>
@@ -207,28 +322,37 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
               <p className="section-title">בדיקות נדרשות</p>
               <div className="flex flex-wrap gap-2">
                 {LAB_TESTS.map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => toggleTest(t)}
+                  <button key={t} type="button" onClick={() => toggleTest(t)}
                     className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${
                       data.tests.includes(t)
                         ? "bg-green-800 text-white border-green-800"
                         : "bg-white text-gray-600 border-gray-200"
-                    }`}
-                  >
+                    }`}>
                     {t}
                   </button>
                 ))}
               </div>
             </div>
 
-            <button onClick={() => setStep("samples")} className="btn-primary w-full">
+            {headerErrors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm font-medium mb-1">⚠ לא ניתן להמשיך — חסרים שדות חובה:</p>
+                <ul className="text-red-500 text-xs list-disc list-inside space-y-0.5">
+                  {headerErrors.map(e => <li key={e}>{e}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <button
+              onClick={() => { if (validateHeader()) setStep("samples"); }}
+              className="btn-primary w-full"
+            >
               המשך לבחירת דגימות ←
             </button>
           </div>
         )}
 
+        {/* ─── STEP 2: Samples ─── */}
         {step === "samples" && (
           <div className="space-y-4">
             <div className="card">
@@ -244,34 +368,26 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
                     <div>
                       <span className="font-medium text-sm">קידוח {row.drillNum || idx+1}</span>
                       {row.sampleNum && <span className="text-gray-500 text-xs mr-2">· {row.sampleNum}</span>}
-                      {row.depth && <span className="text-gray-500 text-xs">· {row.depth} מ'</span>}
+                      {row.depth && <span className="text-gray-500 text-xs">· {row.depth} מ&#39;</span>}
                     </div>
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => toggleSend(row.id)}
-                        className={`text-xs px-3 py-1 rounded-full border font-medium transition-all ${
-                          row.sendToLab
-                            ? "bg-green-700 text-white border-green-700"
-                            : "bg-white text-gray-500 border-gray-200"
-                        }`}
-                      >
-                        {row.sendToLab ? "✓ שולחים" : "לא שולחים"}
-                      </button>
-                    </div>
+                    <button onClick={() => toggleSend(row.id)}
+                      className={`text-xs px-3 py-1 rounded-full border font-medium transition-all ${
+                        row.sendToLab ? "bg-green-700 text-white border-green-700" : "bg-white text-gray-500 border-gray-200"
+                      }`}>
+                      {row.sendToLab ? "✓ שולחים" : "לא שולחים"}
+                    </button>
                   </div>
                   {row.sendToLab && (
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <div>
                         <label className="field-label">כלי דיגום</label>
-                        <select className="text-xs py-1"
-                          value={row.notes}
-                          onChange={e => updateSampleTool(row.id, e.target.value)}>
+                        <select className="text-xs py-1" value={row.notes} onChange={e => updateSampleTool(row.id, e.target.value)}>
                           <option value="">בחר...</option>
                           {SAMPLING_TOOLS.map(t => <option key={t}>{t}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="field-label">מס' אריזות</label>
+                        <label className="field-label">מס&#39; אריזות</label>
                         <input type="number" min="1" max="10" className="text-xs py-1" placeholder="1" />
                       </div>
                     </div>
@@ -305,14 +421,24 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
           </div>
         )}
 
+        {/* ─── STEP 3: Signatures + PDF ─── */}
         {step === "sign" && (
           <div className="space-y-4">
+
+            {/* Sampler signature */}
             <div className="card">
-              <p className="section-title">מסירה</p>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-full bg-green-100 text-green-700 text-xs flex items-center justify-center font-medium">1</div>
+                <p className="section-title mb-0">חתימת הדוגם <span className="text-red-500">*</span></p>
+              </div>
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div>
-                  <label className="field-label">נמסר ע"י</label>
-                  <input value={data.deliveredBy} onChange={e => set("deliveredBy", e.target.value)} />
+                  <label className="field-label">נמסר ע"י <span className="text-red-500">*</span></label>
+                  <input value={data.deliveredBy}
+                    onChange={e => { set("deliveredBy", e.target.value); setSignErrors(p => p.filter(x => x !== "שם הממסר")); }}
+                    className={!data.deliveredBy && signErrors.includes("שם הממסר") ? "border-red-400 bg-red-50" : ""}
+                  />
+                  {!data.deliveredBy && signErrors.includes("שם הממסר") && <RequiredNote label="שם הממסר" />}
                 </div>
                 <div>
                   <label className="field-label">תאריך מסירה</label>
@@ -324,31 +450,131 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
                 </div>
               </div>
               <SignaturePad
-                label="חתימת הדוגם:"
-                onChange={v => set("signature", v)}
+                label="חתום/י עם העט או האצבע — חתימת הדוגם:"
+                onChange={v => { set("signature", v); setSignErrors(p => p.filter(x => x !== "חתימת הדוגם")); }}
+              />
+              {!data.signature && signErrors.includes("חתימת הדוגם") && <RequiredNote label="חתימת הדוגם" />}
+            </div>
+
+            {/* Lab receiver signature */}
+            <div className="card border-blue-100">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs flex items-center justify-center font-medium">2</div>
+                <p className="section-title mb-0 text-blue-800">חתימת מקבל במעבדה</p>
+                <span className="text-xs text-gray-400">(אופציונלי — ימולא בקבלה)</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label className="field-label">שם המקבל</label>
+                  <input value={data.receivedBy} onChange={e => set("receivedBy", e.target.value)} placeholder="שם מקבל הדגימות" />
+                </div>
+                <div>
+                  <label className="field-label">תאריך קבלה</label>
+                  <input type="date" value={data.receivedDate} onChange={e => set("receivedDate", e.target.value)} />
+                </div>
+                <div>
+                  <label className="field-label">שעת קבלה</label>
+                  <input type="time" value={data.receivedTime} onChange={e => set("receivedTime", e.target.value)} />
+                </div>
+              </div>
+              <SignaturePad
+                label="חתימת מקבל הדגימות במעבדה:"
+                onChange={setLabSignature}
               />
             </div>
 
+            {/* Summary */}
             <div className="card bg-green-50 border-green-100">
-              <p className="section-title text-green-800">סיכום</p>
+              <p className="section-title text-green-800">סיכום לפני יצירת PDF</p>
               <div className="text-sm text-green-700 space-y-1">
-                <p>אתר: <strong>{data.site || "—"}</strong></p>
-                <p>מעבדה: <strong>{data.lab || "—"}</strong></p>
+                <p>אתר: <strong>{data.site}</strong></p>
+                <p>מעבדה: <strong>{labsArray.length > 0 ? labsArray.join(", ") : "—"}</strong></p>
                 <p>דגימות לשליחה: <strong>{data.samples.filter(s => s.sendToLab).length}</strong></p>
                 <p>בדיקות: <strong>{data.tests.join(", ") || "—"}</strong></p>
+                <p>דוגם: <strong>{data.samplerName}</strong></p>
+                <p>חתימת דוגם: <strong className={data.signature ? "text-green-600" : "text-red-500"}>{data.signature ? "✓ חתום" : "✗ חסרה"}</strong></p>
+                <p>חתימת מעבדה: <strong className={labSignature ? "text-green-600" : "text-gray-400"}>{labSignature ? "✓ חתום" : "—"}</strong></p>
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <button onClick={() => setStep("samples")} className="btn-secondary flex-1">← חזרה</button>
+            {/* Validation errors */}
+            {signErrors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm font-medium mb-1">⚠ חסרים שדות חובה:</p>
+                <ul className="text-red-500 text-xs list-disc list-inside">
+                  {signErrors.map(e => <li key={e}>{e}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {/* Generate PDF button */}
+            {!pdfUrl ? (
               <button
-                onClick={handleSubmit}
-                disabled={!data.site}
-                className="btn-primary flex-1 disabled:opacity-50"
+                onClick={handleGeneratePdf}
+                disabled={generating}
+                className="btn-primary w-full flex items-center justify-center gap-2"
               >
-                ✓ סיים ושמור
+                {generating ? (
+                  <><span className="animate-spin">⏳</span> יוצר PDF...</>
+                ) : (
+                  <><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> צור PDF</>
+                )}
               </button>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                {/* PDF ready */}
+                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#15803d" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  <p className="text-green-700 text-sm font-medium">✓ PDF נוצר בהצלחה</p>
+                </div>
+
+                {/* Download button */}
+                <button onClick={handleDownload} className="btn-primary w-full flex items-center justify-center gap-2">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                  </svg>
+                  הורד PDF
+                </button>
+
+                {/* Email section */}
+                <div className="card">
+                  <p className="section-title">שלח למייל המשרד</p>
+                  <div className="mb-3">
+                    <label className="field-label">כתובת מייל</label>
+                    <input
+                      type="email"
+                      value={customEmail}
+                      onChange={e => setCustomEmail(e.target.value)}
+                      placeholder="office@vasa-eco.co.il"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">הזן את כתובת המייל הרצויה</p>
+                  </div>
+                  {emailSent && (
+                    <p className="text-green-600 text-xs mb-2">✓ תוכנת המייל נפתחה — צרף את ה-PDF שהורדת</p>
+                  )}
+                  <button onClick={handleEmail} className="w-full flex items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    שלח במייל
+                  </button>
+                </div>
+
+                {/* Done button */}
+                <div className="flex gap-2">
+                  <button onClick={() => setStep("samples")} className="btn-secondary flex-1">← חזרה</button>
+                  <button onClick={handleDone} className="btn-primary flex-1">✓ סיים</button>
+                </div>
+              </div>
+            )}
+
+            {!pdfUrl && (
+              <div className="flex gap-2">
+                <button onClick={() => setStep("samples")} className="btn-secondary flex-1">← חזרה</button>
+              </div>
+            )}
           </div>
         )}
       </div>

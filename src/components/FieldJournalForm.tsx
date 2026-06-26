@@ -5,6 +5,7 @@ import type { FieldJournalData, SampleRow } from "@/types/forms";
 import { SOIL_TYPES, COLORS, MOISTURE, SMELL, WEATHER, DRILLING_TOOLS } from "@/types/forms";
 import CircleSelect from "./CircleSelect";
 import SignaturePad from "./SignaturePad";
+import DrillChart from "./DrillChart";
 
 type Props = {
   user: User;
@@ -14,24 +15,67 @@ type Props = {
   onContinue: () => void;
 };
 
-const newRow = (): SampleRow => ({
-  id: crypto.randomUUID(), drillNum: "", sampleNum: "", depth: "", time: "",
+// Group samples by drill number
+type DrillGroup = { drillNum: string; samples: SampleRow[] };
+
+const newSample = (drillNum: string): SampleRow => ({
+  id: crypto.randomUUID(), drillNum, sampleNum: "", depth: "", time: "",
   soilType: "", color: "", smell: "", moisture: "", pid: "", pid20: "", notes: "",
   sendToLab: true
 });
 
+function groupByDrill(samples: SampleRow[]): DrillGroup[] {
+  const map = new Map<string, SampleRow[]>();
+  samples.forEach(s => {
+    if (!map.has(s.drillNum)) map.set(s.drillNum, []);
+    map.get(s.drillNum)!.push(s);
+  });
+  return Array.from(map.entries()).map(([drillNum, samples]) => ({ drillNum, samples }));
+}
+
 export default function FieldJournalForm({ user, data, onChange, onBack, onContinue }: Props) {
-  const [step, setStep] = useState<"header" | "samples" | "sign">("header");
+  const [step, setStep] = useState<"header" | "samples" | "chart" | "sign">("header");
+  const [expandedDrills, setExpandedDrills] = useState<Record<string,boolean>>({});
+  const [headerErrors, setHeaderErrors] = useState<string[]>([]);
+  const [newDrillNum, setNewDrillNum] = useState("");
 
   const set = (k: keyof FieldJournalData, v: string) => onChange({ ...data, [k]: v });
 
-  const addRow = () => onChange({ ...data, samples: [...data.samples, newRow()] });
+  const toggleDrill = (drillNum: string) => {
+    setExpandedDrills(prev => ({ ...prev, [drillNum]: !prev[drillNum] }));
+  };
 
-  const updateRow = (id: string, k: keyof SampleRow, v: string) =>
+  const addDrill = () => {
+    const num = newDrillNum.trim() || `B-${groupByDrill(data.samples).length + 1}`;
+    const sample = newSample(num);
+    onChange({ ...data, samples: [...data.samples, sample] });
+    setExpandedDrills(prev => ({ ...prev, [num]: true }));
+    setNewDrillNum("");
+  };
+
+  const addSampleToDrill = (drillNum: string) => {
+    onChange({ ...data, samples: [...data.samples, newSample(drillNum)] });
+  };
+
+  const updateSample = (id: string, k: keyof SampleRow, v: string) =>
     onChange({ ...data, samples: data.samples.map(s => s.id === id ? { ...s, [k]: v } : s) });
 
-  const removeRow = (id: string) =>
+  const removeSample = (id: string) =>
     onChange({ ...data, samples: data.samples.filter(s => s.id !== id) });
+
+  const removeDrill = (drillNum: string) =>
+    onChange({ ...data, samples: data.samples.filter(s => s.drillNum !== drillNum) });
+
+  const validateHeader = () => {
+    const errs: string[] = [];
+    if (!data.site) errs.push("שם האתר");
+    if (!data.date) errs.push("תאריך");
+    if (!data.sampler1) errs.push("שם הדוגם");
+    setHeaderErrors(errs);
+    return errs.length === 0;
+  };
+
+  const groups = groupByDrill(data.samples);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -45,13 +89,13 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
           <div className="font-medium text-sm">יומן שדה · טופס 57</div>
           <div className="text-green-300 text-xs">{user.name}</div>
         </div>
-        {/* Steps indicator */}
-        <div className="flex gap-2 mr-auto">
-          {(["header","samples","sign"] as const).map((s, i) => (
+        <div className="flex gap-1.5 mr-auto">
+          {(["header","samples","chart","sign"] as const).map((s, i) => (
             <div key={s} className={`w-6 h-6 rounded-full text-xs flex items-center justify-center border ${
               step === s ? "bg-white text-green-900 border-white" :
-              (step === "samples" && s === "header") || (step === "sign") ? "bg-green-700 border-green-600 text-green-200" :
-              "border-green-700 text-green-500"
+              ["header","samples","chart"].indexOf(s) < ["header","samples","chart","sign"].indexOf(step)
+                ? "bg-green-700 border-green-600 text-green-200"
+                : "border-green-700 text-green-500"
             }`}>{i+1}</div>
           ))}
         </div>
@@ -59,14 +103,14 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
 
       <div className="p-4 max-w-3xl mx-auto pb-24">
 
-        {/* STEP 1: Header fields */}
+        {/* STEP 1: Header */}
         {step === "header" && (
           <div className="space-y-4">
             <div className="card">
               <p className="section-title">פרטי האתר</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <label className="field-label">שם האתר *</label>
+                  <label className="field-label">שם האתר <span className="text-red-500">*</span></label>
                   <input value={data.site} onChange={e => set("site", e.target.value)} placeholder="שם האתר" />
                 </div>
                 <div className="col-span-2">
@@ -104,7 +148,7 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
             </div>
 
             <div className="card">
-              <p className="section-title">נתוני מדידה ואנשים</p>
+              <p className="section-title">אנשים</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">הלקוח</label>
@@ -123,7 +167,7 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
                   <input value={data.pidOpenAir} onChange={e => set("pidOpenAir", e.target.value)} placeholder="ערך ppm" />
                 </div>
                 <div className="col-span-2">
-                  <label className="field-label">דוגם 1</label>
+                  <label className="field-label">דוגם 1 <span className="text-red-500">*</span></label>
                   <input value={data.sampler1} onChange={e => set("sampler1", e.target.value)} placeholder="שם הדוגם" />
                 </div>
                 <div className="col-span-2">
@@ -141,7 +185,7 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
                   <CircleSelect options={WEATHER} value={data.weather} onChange={v => set("weather", v)} />
                 </div>
                 <div>
-                  <label className="field-label">וודא/י בדיקת מוכנות ליום דיגום (לפי טפסים 55,56)</label>
+                  <label className="field-label">וודא/י בדיקת מוכנות (טפסים 55,56)</label>
                   <CircleSelect options={["כן","לא"]} value={data.readinessCheck} onChange={v => set("readinessCheck", v)} />
                 </div>
                 <div>
@@ -159,97 +203,201 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
               </div>
             </div>
 
-            <button onClick={() => setStep("samples")} className="btn-primary w-full">
+            {headerErrors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm font-medium mb-1">⚠ לא ניתן להמשיך — חסרים שדות חובה:</p>
+                <ul className="text-red-500 text-xs list-disc list-inside space-y-0.5">
+                  {headerErrors.map(e => <li key={e}>{e}</li>)}
+                </ul>
+              </div>
+            )}
+            <button onClick={() => { if (validateHeader()) setStep("samples"); }} className="btn-primary w-full">
               המשך לדגימות ←
             </button>
           </div>
         )}
 
-        {/* STEP 2: Samples table */}
+        {/* STEP 2: Drills + Samples */}
         {step === "samples" && (
           <div>
-            <div className="card mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <p className="section-title mb-0">טבלת דגימות</p>
-                <span className="text-xs text-gray-400">{data.samples.length} שורות</span>
-              </div>
-
-              {data.samples.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-6">לחץ על &quot;הוסף שורה&quot; להוספת דגימה</p>
+            {/* Summary bar */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-700">
+                {groups.length} קידוחים · {data.samples.length} דגימות
+              </span>
+              {data.samples.length > 0 && (
+                <button
+                  onClick={() => setStep("chart")}
+                  className="text-xs text-green-700 border border-green-200 rounded-lg px-3 py-1.5 bg-green-50 flex items-center gap-1.5"
+                >
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                  </svg>
+                  הצג גרף
+                </button>
               )}
-
-              {data.samples.map((row, idx) => (
-                <div key={row.id} className="border border-gray-100 rounded-xl p-3 mb-3 bg-gray-50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-gray-500">שורה {idx + 1}</span>
-                    <button onClick={() => removeRow(row.id)} className="text-xs text-red-400 hover:text-red-600">
-                      הסר
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 mb-2">
-                    <div>
-                      <label className="field-label">מס' קידוח</label>
-                      <input value={row.drillNum} onChange={e => updateRow(row.id, "drillNum", e.target.value)} placeholder="B-1" />
-                    </div>
-                    <div>
-                      <label className="field-label">מס' דגימה</label>
-                      <input value={row.sampleNum} onChange={e => updateRow(row.id, "sampleNum", e.target.value)} placeholder="1-0.5" />
-                    </div>
-                    <div>
-                      <label className="field-label">עומק (מ')</label>
-                      <input type="number" step="0.5" value={row.depth} onChange={e => updateRow(row.id, "depth", e.target.value)} placeholder="0.5" />
-                    </div>
-                    <div>
-                      <label className="field-label">שעה</label>
-                      <input type="time" value={row.time} onChange={e => updateRow(row.id, "time", e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="field-label">ערך PID</label>
-                      <input value={row.pid} onChange={e => updateRow(row.id, "pid", e.target.value)} placeholder="ppm" />
-                    </div>
-                    <div>
-                      <label className="field-label">PID 20%</label>
-                      <input value={row.pid20} onChange={e => updateRow(row.id, "pid20", e.target.value)} placeholder="ppm" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div>
-                      <label className="field-label">סוג קרקע</label>
-                      <CircleSelect options={SOIL_TYPES} value={row.soilType} onChange={v => updateRow(row.id, "soilType", v)} />
-                    </div>
-                    <div>
-                      <label className="field-label">צבע</label>
-                      <CircleSelect options={COLORS} value={row.color} onChange={v => updateRow(row.id, "color", v)} />
-                    </div>
-                    <div>
-                      <label className="field-label">ריח</label>
-                      <CircleSelect options={SMELL} value={row.smell} onChange={v => updateRow(row.id, "smell", v)} />
-                    </div>
-                    <div>
-                      <label className="field-label">לחות</label>
-                      <CircleSelect options={MOISTURE} value={row.moisture} onChange={v => updateRow(row.id, "moisture", v)} />
-                    </div>
-                    <div>
-                      <label className="field-label">הערות</label>
-                      <input value={row.notes} onChange={e => updateRow(row.id, "notes", e.target.value)} placeholder="הערות נוספות..." />
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              <button onClick={addRow} className="btn-secondary w-full mt-1">
-                + הוסף שורת דגימה
-              </button>
             </div>
 
-            <div className="flex gap-2">
+            {/* Drill groups */}
+            {groups.length === 0 && (
+              <div className="card text-center py-8 mb-3">
+                <p className="text-gray-400 text-sm mb-1">אין קידוחים עדיין</p>
+                <p className="text-gray-300 text-xs">הוסף קידוח ראשון למטה</p>
+              </div>
+            )}
+
+            {groups.map(({ drillNum, samples }) => {
+              const isOpen = !!expandedDrills[drillNum];
+              return (
+                <div key={drillNum} className="card mb-3 overflow-hidden p-0">
+                  {/* Drill header - always visible */}
+                  <button
+                    onClick={() => toggleDrill(drillNum)}
+                    className="w-full flex items-center justify-between p-3 text-right hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#2d6645" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                        </svg>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium text-gray-800 text-sm">קידוח {drillNum}</div>
+                        <div className="text-xs text-gray-400">{samples.length} דגימות</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={e => { e.stopPropagation(); removeDrill(drillNum); }}
+                        className="text-red-300 hover:text-red-500 p-1"
+                      >
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                      </button>
+                      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth="2"
+                        className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>
+                      </svg>
+                    </div>
+                  </button>
+
+                  {/* Samples inside drill */}
+                  {isOpen && (
+                    <div className="border-t border-gray-100 bg-gray-50 p-3 space-y-3">
+                      {samples.map((row, idx) => (
+                        <div key={row.id} className="bg-white rounded-xl p-3 border border-gray-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">
+                              דגימה {idx + 1}
+                            </span>
+                            <button onClick={() => removeSample(row.id)} className="text-xs text-red-300 hover:text-red-500">
+                              הסר
+                            </button>
+                          </div>
+
+                          {/* Row 1: number, depth, time */}
+                          <div className="grid grid-cols-3 gap-2 mb-2">
+                            <div>
+                              <label className="field-label">מס' דגימה</label>
+                              <input value={row.sampleNum} onChange={e => updateSample(row.id, "sampleNum", e.target.value)} placeholder="1-0.5" />
+                            </div>
+                            <div>
+                              <label className="field-label">עומק (מ')</label>
+                              <input type="number" step="0.5" value={row.depth} onChange={e => updateSample(row.id, "depth", e.target.value)} placeholder="0.5" />
+                            </div>
+                            <div>
+                              <label className="field-label">שעה</label>
+                              <input type="time" value={row.time} onChange={e => updateSample(row.id, "time", e.target.value)} />
+                            </div>
+                          </div>
+
+                          {/* Row 2: PID values */}
+                          <div className="grid grid-cols-2 gap-2 mb-3">
+                            <div>
+                              <label className="field-label">ערך PID (ppm)</label>
+                              <input value={row.pid} onChange={e => updateSample(row.id, "pid", e.target.value)} placeholder="0.0" />
+                            </div>
+                            <div>
+                              <label className="field-label">PID 20%</label>
+                              <input value={row.pid20} onChange={e => updateSample(row.id, "pid20", e.target.value)} placeholder="0.0" />
+                            </div>
+                          </div>
+
+                          {/* Circle selects — compact rows */}
+                          <div className="space-y-2 border-t border-gray-50 pt-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="field-label mb-0 w-16 flex-shrink-0">סוג קרקע</span>
+                              <CircleSelect options={SOIL_TYPES} value={row.soilType} onChange={v => updateSample(row.id, "soilType", v)} />
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="field-label mb-0 w-16 flex-shrink-0">צבע</span>
+                              <CircleSelect options={COLORS} value={row.color} onChange={v => updateSample(row.id, "color", v)} />
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="field-label mb-0 w-16 flex-shrink-0">ריח</span>
+                              <CircleSelect options={SMELL} value={row.smell} onChange={v => updateSample(row.id, "smell", v)} />
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="field-label mb-0 w-16 flex-shrink-0">לחות</span>
+                              <CircleSelect options={MOISTURE} value={row.moisture} onChange={v => updateSample(row.id, "moisture", v)} />
+                            </div>
+                            <div>
+                              <input value={row.notes} onChange={e => updateSample(row.id, "notes", e.target.value)} placeholder="הערות..." />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Add sample to this drill */}
+                      <button
+                        onClick={() => addSampleToDrill(drillNum)}
+                        className="w-full text-xs text-green-700 border border-dashed border-green-300 rounded-lg py-2 hover:bg-green-50 transition-colors"
+                      >
+                        + הוסף דגימה לקידוח {drillNum}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Add new drill */}
+            <div className="card border-dashed border-2 border-gray-200 bg-transparent">
+              <p className="text-sm font-medium text-gray-600 mb-2">הוסף קידוח חדש</p>
+              <div className="flex gap-2">
+                <input
+                  value={newDrillNum}
+                  onChange={e => setNewDrillNum(e.target.value)}
+                  placeholder={`B-${groups.length + 1}`}
+                  className="flex-1"
+                  onKeyDown={e => e.key === "Enter" && addDrill()}
+                />
+                <button onClick={addDrill} className="btn-primary whitespace-nowrap">
+                  + קידוח
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-4">
               <button onClick={() => setStep("header")} className="btn-secondary flex-1">← חזרה</button>
               <button onClick={() => setStep("sign")} className="btn-primary flex-1">המשך לחתימה ←</button>
             </div>
           </div>
         )}
 
-        {/* STEP 3: Signature */}
+        {/* STEP 3: Chart */}
+        {step === "chart" && (
+          <div>
+            <DrillChart samples={data.samples} />
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setStep("samples")} className="btn-secondary flex-1">← חזרה לדגימות</button>
+              <button onClick={() => setStep("sign")} className="btn-primary flex-1">המשך לחתימה ←</button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 4: Signature */}
         {step === "sign" && (
           <div className="space-y-4">
             <div className="card">

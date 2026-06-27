@@ -1,4 +1,3 @@
-"use client";
 import type { ChainOfCustodyData } from "@/types/forms";
 import { buildChainHtml } from "./buildPdfHtml";
 

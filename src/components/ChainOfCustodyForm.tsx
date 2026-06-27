@@ -5,7 +5,6 @@ import type { FieldJournalData, ChainOfCustodyData, SampleRow } from "@/types/fo
 import { LAB_TESTS, SAMPLING_TOOLS, WEATHER } from "@/types/forms";
 import CircleSelect from "./CircleSelect";
 import SignaturePad from "./SignaturePad";
-import { generateChainPdf } from "@/lib/generatePdf";
 
 type Props = {
   user: User;
@@ -16,7 +15,7 @@ type Props = {
 
 const LAB_OPTIONS = ["מעבדה ראשית", "מעבדה משנית", "ללא"];
 
-const OFFICE_EMAIL = "info@vasa-eco.co.il"; // ← תעדכן עם המייל האמיתי
+const OFFICE_EMAIL = "office@vasa-eco.co.il"; // ← תעדכן עם המייל האמיתי
 
 const initFromField = (user: User, field?: FieldJournalData): ChainOfCustodyData => ({
   site: field?.site ?? "",
@@ -72,14 +71,17 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
   const [data, setData] = useState<ChainOfCustodyData>(() => initFromField(user, fieldData));
   const [step, setStep] = useState<"header" | "samples" | "sign">("header");
   const [labSignature, setLabSignature] = useState("");
-  const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfFilename, setPdfFilename] = useState("שרשרת_משמורת");
   const [generating, setGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [headerErrors, setHeaderErrors] = useState<string[]>([]);
   const [signErrors, setSignErrors] = useState<string[]>([]);
   const [customEmail, setCustomEmail] = useState(OFFICE_EMAIL);
   const [emailSent, setEmailSent] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailError, setEmailError] = useState("");
 
   const set = (k: keyof ChainOfCustodyData, v: string | string[]) =>
     setData(d => ({ ...d, [k]: v }));
@@ -109,11 +111,11 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
     return errs.length === 0;
   };
 
-  // Validate sign step
+  // Validate sign step — only deliveredBy is required; signature is strongly recommended
   const validateSign = () => {
     const errs: string[] = [];
-    if (!data.signature) errs.push("חתימת הדוגם");
     if (!data.deliveredBy) errs.push("שם הממסר");
+    // signature is recommended but not blocking
     setSignErrors(errs);
     return errs.length === 0;
   };
@@ -121,39 +123,82 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
   const handleGeneratePdf = async () => {
     if (!validateSign()) return;
     setGenerating(true);
+    setPdfError("");
     try {
-      const bytes = await generateChainPdf(data, labSignature || undefined);
-      setPdfBytes(bytes);
-      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
+      const { generatePdfBlob } = await import("@/lib/generatePdfClient");
+      const { url, filename } = await generatePdfBlob(data, labSignature || undefined);
       setPdfUrl(url);
+      setPdfFilename(filename);
     } catch (e) {
-      console.error(e);
+      console.error("PDF generation error:", e);
+      setPdfError(`שגיאה ביצירת PDF: ${e instanceof Error ? e.message : String(e)}`);
     }
     setGenerating(false);
   };
 
   const handleDownload = () => {
     if (!pdfUrl) return;
-    const a = document.createElement("a");
-    a.href = pdfUrl;
-    const dateStr = data.date.replace(/-/g, "");
-    a.download = `שרשרת_משמורת_${data.site || "ללא_שם"}_${dateStr}.pdf`;
-    a.click();
+    // Open HTML in new tab with print dialog
+    const printWindow = window.open(pdfUrl, "_blank");
+    if (printWindow) {
+      printWindow.onload = () => setTimeout(() => printWindow.print(), 400);
+      setTimeout(() => { try { printWindow.print(); } catch(_){} }, 900);
+    }
   };
 
-  const handleEmail = () => {
+  const handleEmail = async () => {
     if (!pdfUrl) return;
-    // mailto with subject — attachment not possible via mailto, so we open mail client
-    // For real send, a backend API route would be needed
-    const subject = encodeURIComponent(`שרשרת משמורת · ${data.site} · ${data.date}`);
-    const body = encodeURIComponent(
-      `שלום,\n\nמצורף דוח שרשרת משמורת:\nאתר: ${data.site}\nתאריך: ${data.date}\nדוגם: ${data.samplerName}\nדגימות: ${data.samples.filter(s => s.sendToLab).length}\n\nהדו"ח נוצר אוטומטית ממערכת דיגום השדה.`
-    );
-    window.open(`mailto:${customEmail}?subject=${subject}&body=${body}`);
-    // Also trigger download so they can attach manually
-    handleDownload();
-    setEmailSent(true);
+    setEmailSending(true);
+    setEmailSent(false);
+    setEmailError("");
+    try {
+      // Fetch the HTML blob and convert to base64 for email
+      const pdfBlob = await fetch(pdfUrl).then(r => r.blob());
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(pdfBlob);
+      });
+
+      const dateStr = data.date.replace(/-/g, "");
+      const filename = `שרשרת_משמורת_${data.site || "ללא_שם"}_${dateStr}.pdf`;
+      const subject = `שרשרת משמורת · ${data.site} · ${data.date}`;
+      const body = `אתר: ${data.site}
+תאריך: ${data.date}
+דוגם: ${data.samplerName}
+מעבדה: ${data.lab || "—"}
+דגימות לשליחה: ${data.samples.filter(s => s.sendToLab).length}
+בדיקות: ${data.tests.join(", ") || "—"}
+
+הדו"ח נוצר אוטומטית ממערכת דיגום השדה.`;
+
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: customEmail, subject, body, pdfBase64: base64, filename }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        if (result.instructions) {
+          // Resend not configured — fall back to mailto + download
+          handleDownload();
+          const sub = encodeURIComponent(subject);
+          const bod = encodeURIComponent(body);
+          window.open(`mailto:${customEmail}?subject=${sub}&body=${bod}`);
+          setEmailError("שלב ביניים: המייל נפתח בתוכנתך — צרף את ה-PDF שהורד");
+        } else {
+          throw new Error(result.error || "שגיאה בשליחת המייל");
+        }
+      } else {
+        setEmailSent(true);
+      }
+    } catch (e) {
+      setEmailError(`שגיאה: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    setEmailSending(false);
   };
 
   const handleDone = () => {
@@ -509,6 +554,7 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
 
             {/* Generate PDF button */}
             {!pdfUrl ? (
+              <>
               <button
                 onClick={handleGeneratePdf}
                 disabled={generating}
@@ -520,22 +566,26 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
                   <><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> צור PDF</>
                 )}
               </button>
+              {pdfError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">
+                  ⚠ {pdfError}
+                </div>
+              )}
+              </>
             ) : (
               <div className="space-y-3">
                 {/* PDF ready */}
-                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#15803d" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
-                  </svg>
-                  <p className="text-green-700 text-sm font-medium">✓ PDF נוצר בהצלחה</p>
+                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                  <p className="text-green-700 text-sm font-medium mb-1">✓ הטופס מוכן להדפסה</p>
+                  <p className="text-green-600 text-xs">לחץ "פתח והדפס" ← בחר "שמור כ-PDF" ← שמור</p>
                 </div>
 
-                {/* Download button */}
+                {/* Print/Download button */}
                 <button onClick={handleDownload} className="btn-primary w-full flex items-center justify-center gap-2">
                   <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
                   </svg>
-                  הורד PDF
+                  פתח והדפס / שמור PDF
                 </button>
 
                 {/* Email section */}
@@ -552,13 +602,26 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
                     <p className="text-xs text-gray-400 mt-1">הזן את כתובת המייל הרצויה</p>
                   </div>
                   {emailSent && (
-                    <p className="text-green-600 text-xs mb-2">✓ תוכנת המייל נפתחה — צרף את ה-PDF שהורדת</p>
+                    <p className="text-green-600 text-xs mb-2">✓ המייל נשלח בהצלחה עם ה-PDF מצורף!</p>
                   )}
-                  <button onClick={handleEmail} className="w-full flex items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                    </svg>
-                    שלח במייל
+                  {emailError && (
+                    <p className="text-amber-600 text-xs mb-2">{emailError}</p>
+                  )}
+                  <button
+                    onClick={handleEmail}
+                    disabled={emailSending}
+                    className="w-full flex items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    {emailSending ? (
+                      <><span className="animate-spin">⏳</span> שולח מייל...</>
+                    ) : (
+                      <>
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                        שלח במייל עם PDF מצורף
+                      </>
+                    )}
                   </button>
                 </div>
 

@@ -16,7 +16,7 @@ type Props = {
 
 const LAB_OPTIONS = ["מעבדה ראשית", "מעבדה משנית", "ללא"];
 
-const OFFICE_EMAIL = "office@vasa-eco.co.il"; // ← תעדכן עם המייל האמיתי
+const OFFICE_EMAIL = "info@vasa-eco.co.il"; // ← תעדכן עם המייל האמיתי
 
 const initFromField = (user: User, field?: FieldJournalData): ChainOfCustodyData => ({
   site: field?.site ?? "",

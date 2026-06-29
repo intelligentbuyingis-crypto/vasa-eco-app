@@ -46,14 +46,10 @@ export default function Home() {
       <div className="w-full max-w-sm">
         {/* Logo area */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-3">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <path d="M16 4C16 4 8 10 8 18C8 22.4 11.6 26 16 26C20.4 26 24 22.4 24 18C24 10 16 4 16 4Z" fill="white" opacity="0.9"/>
-              <path d="M16 12C16 12 20 16 20 20" stroke="green" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
+          <div className="flex items-center justify-center mx-auto mb-3">
+            <img src="/logo.png" alt="וזה אקולוגיה" className="h-20 w-auto drop-shadow-lg" />
           </div>
-          <h1 className="text-white text-2xl font-medium">וזה אקולוגיה</h1>
-          <p className="text-green-300 text-sm mt-1">מערכת דיגום שדה</p>
+          <p className="text-green-300 text-sm mt-2">מערכת דיגום שדה</p>
         </div>
 
         {/* Login card */}

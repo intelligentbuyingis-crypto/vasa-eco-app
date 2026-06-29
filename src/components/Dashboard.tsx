@@ -49,8 +49,8 @@ export default function Dashboard({ user, onLogout }: Props) {
     <div className="min-h-screen bg-gray-50">
       {/* Top bar */}
       <header className="bg-green-900 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-        <div>
-          <div className="font-medium text-sm">וזה אקולוגיה</div>
+        <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="וזה אקולוגיה" className="h-8 w-auto" />
           <div className="text-green-300 text-xs">{today}</div>
         </div>
         <div className="flex items-center gap-3">

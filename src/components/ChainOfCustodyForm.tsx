@@ -210,6 +210,9 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
   const [customEmail, setCustomEmail] = useState(OFFICE_EMAIL);
   const [emailSent, setEmailSent] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
+  const [cloudUploading, setCloudUploading] = useState(false);
+  const [cloudUploaded, setCloudUploaded] = useState(false);
+  const [cloudError, setCloudError] = useState("");
   const [emailError, setEmailError] = useState("");
 
   const set = (k: keyof ChainOfCustodyData, v: string | string[]) =>
@@ -303,6 +306,34 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
       setEmailError("שגיאה: " + (e instanceof Error ? e.message : String(e)));
     }
     setEmailSending(false);
+  };
+
+  const handleCloudUpload = async () => {
+    if (!pdfUrl) return;
+    setCloudUploading(true);
+    setCloudUploaded(false);
+    setCloudError("");
+    try {
+      const htmlContent = await fetch(pdfUrl).then(r => r.text());
+      const res = await fetch("/api/upload-dropbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          htmlContent,
+          filename: pdfFilename + ".html",
+          projectName: data.site,
+          date: data.date,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.instructions || result.error || "שגיאה בהעלאה לענן");
+      }
+      setCloudUploaded(true);
+    } catch (e) {
+      setCloudError(e instanceof Error ? e.message : String(e));
+    }
+    setCloudUploading(false);
   };
 
   const handleDone = () => {
@@ -667,6 +698,26 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
                       שלח במייל
                     </>}
                   </button>
+                </div>
+
+                <div className="card">
+                  <p className="section-title">שמירה אוטומטית בענן</p>
+                  {cloudUploaded && (
+                    <p className="text-green-600 text-xs mb-2">✓ הקובץ נשמר בענן בהצלחה! נתיב: {data.site}/{data.date}</p>
+                  )}
+                  {cloudError && (
+                    <p className="text-amber-600 text-xs mb-2">{cloudError}</p>
+                  )}
+                  <button onClick={handleCloudUpload} disabled={cloudUploading}
+                    className="w-full flex items-center justify-center gap-2 border border-blue-200 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm hover:bg-blue-100 transition-colors disabled:opacity-50">
+                    {cloudUploading ? <><span>⏳</span> מעלה לענן...</> : <>
+                      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                      </svg>
+                      שמור בענן (Dropbox)
+                    </>}
+                  </button>
+                  <p className="text-xs text-gray-400 mt-1">ישמר בנתיב: {data.site || "פרויקט"}/{data.date}</p>
                 </div>
 
                 <div className="flex gap-2">

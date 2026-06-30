@@ -33,11 +33,123 @@ function groupByDrill(samples: SampleRow[]): DrillGroup[] {
   return Array.from(map.entries()).map(([drillNum, samples]) => ({ drillNum, samples }));
 }
 
+function buildFieldJournalHtml(data: FieldJournalData, samplerName: string): string {
+  const genAt = new Date().toLocaleString("he-IL");
+  const groups = groupByDrill(data.samples);
+
+  const drillSections = groups.map(g => {
+    const rows = g.samples.map((s, i) => {
+      const bg = i % 2 === 0 ? "#ffffff" : "#f8f8f8";
+      return "<tr style=\"background:" + bg + "\">" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;font-size:7.5pt\">" + (s.sampleNum || "#" + (i+1)) + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.depth ? s.depth + "מ'" : "") + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.time || "") + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.soilType || "") + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.color || "") + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.smell || "") + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.moisture || "") + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.pid || "") + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;font-size:7.5pt\">" + (s.notes || "") + "</td>" +
+        "</tr>";
+    }).join("");
+
+    return "<div style=\"margin-bottom:8px\">" +
+      "<div style=\"background:#0d6626;color:white;padding:3px 8px;font-weight:bold;font-size:8.5pt\">קידוח " + g.drillNum + "</div>" +
+      "<table style=\"width:100%;border-collapse:collapse\">" +
+      "<thead><tr style=\"background:#c8e6c9\">" +
+      "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">מס' דגימה</th>" +
+      "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">עומק</th>" +
+      "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">שעה</th>" +
+      "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">סוג קרקע</th>" +
+      "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">צבע</th>" +
+      "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">ריח</th>" +
+      "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">לחות</th>" +
+      "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">PID</th>" +
+      "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">הערות</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+  }).join("");
+
+  const sigHtml = data.signature
+    ? "<img src=\"" + data.signature + "\" style=\"max-height:35px;display:block\"/>"
+    : "<div style=\"color:#aaa;font-size:7pt;margin-top:8px\">חתימה לא צורפה</div>";
+
+  return "<!DOCTYPE html>" +
+    "<html dir=\"rtl\" lang=\"he\"><head><meta charset=\"UTF-8\">" +
+    "<style>*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}" +
+    "body{padding:8px;font-size:8pt}@media print{body{padding:0}}</style></head><body>" +
+
+    "<div style=\"background:#0d6626;color:white;display:flex;align-items:stretch;margin-bottom:6px\">" +
+    "<div style=\"flex:1;text-align:center;padding:8px 0\">" +
+    "<div style=\"font-size:14pt;font-weight:bold\">וזה אקולוגיה בע&quot;מ</div>" +
+    "<div style=\"font-size:10pt\">יומן שדה — טופס 57</div></div></div>" +
+
+    "<table style=\"width:100%;border-collapse:collapse;margin-bottom:6px\">" +
+    "<tr>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">האתר:</span><br><b>" + (data.site || "—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">תאריך:</span><br><b>" + (data.date || "—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">שעת הגעה-סיום:</span><br><b>" + (data.arrivalTime || "—") + " - " + (data.endTime || "—") + "</b></td>" +
+    "</tr><tr>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">כתובת:</span><br><b>" + (data.address || "—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">לקוח:</span><br><b>" + (data.client || "—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">מזג אוויר:</span><br><b>" + (data.weather || "—") + "</b></td>" +
+    "</tr><tr>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">דוגם:</span><br><b>" + (data.sampler1 || "—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">PID:</span><br><b>" + (data.pid || "—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">בדיקת מוכנות:</span><br><b>" + (data.readinessCheck || "—") + "</b></td>" +
+    "</tr></table>" +
+
+    drillSections +
+
+    "<div style=\"border:0.5px solid #aaa;padding:5px 8px;background:#f0fff4;margin-top:6px\">" +
+    "<div style=\"font-weight:bold;color:#0d6626;font-size:8pt;margin-bottom:3px\">חתימת הדוגם</div>" +
+    sigHtml +
+    "</div>" +
+
+    "<div style=\"background:#0d6626;color:#b2dfb2;padding:3px 8px;margin-top:6px;font-size:6.5pt\">" +
+    "נוצר: " + genAt + " · וזה אקולוגיה · טופס 57 · דוגם: " + samplerName +
+    "</div>" +
+    "</body></html>";
+}
+
 export default function FieldJournalForm({ user, data, onChange, onBack, onContinue }: Props) {
   const [step, setStep] = useState<"header" | "samples" | "chart" | "sign">("header");
   const [expandedDrills, setExpandedDrills] = useState<Record<string,boolean>>({});
   const [headerErrors, setHeaderErrors] = useState<string[]>([]);
   const [newDrillNum, setNewDrillNum] = useState("");
+  const [cloudUploading, setCloudUploading] = useState(false);
+  const [cloudUploaded, setCloudUploaded] = useState(false);
+  const [cloudError, setCloudError] = useState("");
+
+  const handleCloudUpload = async () => {
+    setCloudUploading(true);
+    setCloudUploaded(false);
+    setCloudError("");
+    try {
+      const html = buildFieldJournalHtml(data, user.name);
+      const dateStr = (data.date || "").replace(/-/g, "");
+      const siteStr = (data.site || "טופס").replace(/\s+/g, "_");
+      const filename = `יומן_שדה_${siteStr}_${dateStr}.html`;
+
+      const res = await fetch("/api/upload-dropbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          htmlContent: html,
+          filename,
+          projectName: data.site,
+          date: data.date,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.instructions || result.error || "שגיאה בהעלאה לענן");
+      }
+      setCloudUploaded(true);
+    } catch (e) {
+      setCloudError(e instanceof Error ? e.message : String(e));
+    }
+    setCloudUploading(false);
+  };
 
   const set = (k: keyof FieldJournalData, v: string) => onChange({ ...data, [k]: v });
 
@@ -407,6 +519,27 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
                 onChange={v => set("signature", v)}
               />
             </div>
+
+            <div className="card">
+              <p className="section-title">שמירה אוטומטית בענן</p>
+              {cloudUploaded && (
+                <p className="text-green-600 text-xs mb-2">✓ יומן השדה נשמר בענן! נתיב: {data.site}/{data.date}</p>
+              )}
+              {cloudError && (
+                <p className="text-amber-600 text-xs mb-2">{cloudError}</p>
+              )}
+              <button onClick={handleCloudUpload} disabled={cloudUploading || !data.site}
+                className="w-full flex items-center justify-center gap-2 border border-blue-200 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm hover:bg-blue-100 transition-colors disabled:opacity-50">
+                {cloudUploading ? <><span>⏳</span> מעלה לענן...</> : <>
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                  </svg>
+                  שמור יומן שדה בענן (Dropbox)
+                </>}
+              </button>
+              <p className="text-xs text-gray-400 mt-1">ישמר בנתיב: {data.site || "פרויקט"}/{data.date}</p>
+            </div>
+
             <div className="flex gap-2">
               <button onClick={() => setStep("samples")} className="btn-secondary flex-1">← חזרה</button>
               <button

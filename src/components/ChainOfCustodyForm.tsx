@@ -9,6 +9,7 @@ import SignaturePad from "./SignaturePad";
 type Props = {
   user: User;
   fieldData?: FieldJournalData;
+  projectName?: string;
   onBack: () => void;
   onDone: () => void;
 };
@@ -196,7 +197,7 @@ function buildPdfHtml(data: ChainOfCustodyData, labSignature: string): string {
     "</body></html>";
 }
 
-export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: Props) {
+export default function ChainOfCustodyForm({ user, fieldData, projectName, onBack, onDone }: Props) {
   const [data, setData] = useState<ChainOfCustodyData>(() => initFromField(user, fieldData));
   const [step, setStep] = useState<"header" | "samples" | "sign">("header");
   const [labSignature, setLabSignature] = useState("");
@@ -321,7 +322,7 @@ export default function ChainOfCustodyForm({ user, fieldData, onBack, onDone }: 
         body: JSON.stringify({
           htmlContent,
           filename: pdfFilename + ".html",
-          projectName: data.site,
+          projectName: projectName || data.site,
           date: data.date,
         }),
       });

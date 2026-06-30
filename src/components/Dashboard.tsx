@@ -1,11 +1,13 @@
 "use client";
 import { useState } from "react";
 import type { User } from "@/lib/users";
-import type { Project } from "@/lib/projects";
+
 import FieldJournalForm from "./FieldJournalForm";
 import ChainOfCustodyForm from "./ChainOfCustodyForm";
 import AdminPanel from "./AdminPanel";
 import ProjectSelector from "./ProjectSelector";
+
+type Project = { id: string; name: string; address: string; client: string; createdAt: string; createdBy?: string };
 import type { FieldJournalData } from "@/types/forms";
 
 type Screen = "dashboard" | "project-select-field" | "project-select-chain" | "field" | "chain" | "admin";
@@ -41,6 +43,7 @@ export default function Dashboard({ user, onLogout }: Props) {
 
   if (screen === "project-select-field") return (
     <ProjectSelector
+      userName={user.name}
       onSelect={handleProjectSelectedForField}
       onBack={() => setScreen("dashboard")}
     />
@@ -48,6 +51,7 @@ export default function Dashboard({ user, onLogout }: Props) {
 
   if (screen === "project-select-chain") return (
     <ProjectSelector
+      userName={user.name}
       onSelect={handleProjectSelectedForChain}
       onBack={() => setScreen("dashboard")}
     />

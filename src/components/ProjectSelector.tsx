@@ -1,32 +1,77 @@
 "use client";
 import { useState, useEffect } from "react";
-import { getProjects, addProject, type Project } from "@/lib/projects";
+
+type Project = {
+  id: string;
+  name: string;
+  address: string;
+  client: string;
+  createdAt: string;
+  createdBy?: string;
+};
 
 type Props = {
+  userName: string;
   onSelect: (project: Project) => void;
   onBack: () => void;
 };
 
-export default function ProjectSelector({ onSelect, onBack }: Props) {
+export default function ProjectSelector({ userName, onSelect, onBack }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [newAddress, setNewAddress] = useState("");
   const [newClient, setNewClient] = useState("");
   const [search, setSearch] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  const loadProjects = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const res = await fetch("/api/projects");
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "שגיאה בטעינת פרויקטים");
+      setProjects(result.projects || []);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "שגיאה בטעינת פרויקטים — בדוק חיבור לענן");
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
-    setProjects(getProjects());
+    loadProjects();
   }, []);
 
-  const filtered = projects.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const filtered = projects
+    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newName.trim()) return;
-    const project = addProject(newName, newAddress, newClient);
-    onSelect(project);
+    setCreating(true);
+    setCreateError("");
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName,
+          address: newAddress,
+          client: newClient,
+          createdBy: userName,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "שגיאה ביצירת פרויקט");
+      onSelect(result.project);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : "שגיאה ביצירת פרויקט");
+    }
+    setCreating(false);
   };
 
   return (
@@ -39,7 +84,7 @@ export default function ProjectSelector({ onSelect, onBack }: Props) {
         </button>
         <div>
           <div className="font-medium text-sm">בחירת פרויקט</div>
-          <div className="text-green-300 text-xs">בחר פרויקט קיים או צור חדש</div>
+          <div className="text-green-300 text-xs">משותף לכל הדוגמים</div>
         </div>
       </header>
 
@@ -62,7 +107,18 @@ export default function ProjectSelector({ onSelect, onBack }: Props) {
               </div>
             </button>
 
-            {projects.length > 0 && (
+            {loading && (
+              <p className="text-center text-gray-400 text-sm py-8">טוען פרויקטים מהענן...</p>
+            )}
+
+            {loadError && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-3">
+                <p className="text-amber-700 text-sm">{loadError}</p>
+                <button onClick={loadProjects} className="text-amber-800 text-xs underline mt-1">נסה שוב</button>
+              </div>
+            )}
+
+            {!loading && !loadError && projects.length > 0 && (
               <>
                 <input
                   value={search}
@@ -86,6 +142,7 @@ export default function ProjectSelector({ onSelect, onBack }: Props) {
                       <div className="flex-1">
                         <div className="font-medium text-gray-800">{p.name}</div>
                         {p.address && <div className="text-xs text-gray-400">{p.address}</div>}
+                        {p.createdBy && <div className="text-xs text-gray-300">נפתח ע&quot;י {p.createdBy}</div>}
                       </div>
                       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
@@ -96,7 +153,7 @@ export default function ProjectSelector({ onSelect, onBack }: Props) {
               </>
             )}
 
-            {projects.length === 0 && (
+            {!loading && !loadError && projects.length === 0 && (
               <p className="text-center text-gray-400 text-sm py-8">אין פרויקטים עדיין — צור פרויקט חדש למעלה</p>
             )}
           </>
@@ -122,10 +179,11 @@ export default function ProjectSelector({ onSelect, onBack }: Props) {
                 <input value={newClient} onChange={e => setNewClient(e.target.value)} placeholder="שם הלקוח" />
               </div>
             </div>
+            {createError && <p className="text-red-500 text-xs mt-2">{createError}</p>}
             <div className="flex gap-2 mt-4">
               <button onClick={() => setShowNew(false)} className="btn-secondary flex-1">ביטול</button>
-              <button onClick={handleCreate} disabled={!newName.trim()} className="btn-primary flex-1 disabled:opacity-50">
-                צור והמשך ←
+              <button onClick={handleCreate} disabled={!newName.trim() || creating} className="btn-primary flex-1 disabled:opacity-50">
+                {creating ? "יוצר..." : "צור והמשך ←"}
               </button>
             </div>
           </div>

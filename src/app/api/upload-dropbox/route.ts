@@ -30,17 +30,28 @@ export async function POST(req: NextRequest) {
     // Convert HTML string to bytes (storing as .html since true PDF conversion needs server-side rendering)
     const fileBytes = Buffer.from(htmlContent, "utf-8");
 
+    // Dropbox-API-Arg header must be ASCII-safe. Escape all non-ASCII chars
+    // (e.g. Hebrew) to \uXXXX sequences, per Dropbox API documentation.
+    const escapeNonAscii = (str: string): string => {
+      return str.replace(/[\u0080-\uffff]/g, (ch) => {
+        return "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0");
+      });
+    };
+
+    const apiArgJson = JSON.stringify({
+      path: dropboxPath,
+      mode: "overwrite",
+      autorename: false,
+      mute: false,
+    });
+    const apiArgHeader = escapeNonAscii(apiArgJson);
+
     const uploadRes = await fetch("https://content.dropboxapi.com/2/files/upload", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${DROPBOX_TOKEN}`,
         "Content-Type": "application/octet-stream",
-        "Dropbox-API-Arg": JSON.stringify({
-          path: dropboxPath,
-          mode: "overwrite",
-          autorename: false,
-          mute: false,
-        }),
+        "Dropbox-API-Arg": apiArgHeader,
       },
       body: fileBytes,
     });

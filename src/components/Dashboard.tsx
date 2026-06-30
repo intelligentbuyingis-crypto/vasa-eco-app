@@ -1,18 +1,20 @@
 "use client";
 import { useState } from "react";
 import type { User } from "@/lib/users";
+import type { Project } from "@/lib/projects";
 import FieldJournalForm from "./FieldJournalForm";
 import ChainOfCustodyForm from "./ChainOfCustodyForm";
 import AdminPanel from "./AdminPanel";
-import type { FieldJournalData, SampleRow } from "@/types/forms";
+import ProjectSelector from "./ProjectSelector";
+import type { FieldJournalData } from "@/types/forms";
 
-type Screen = "dashboard" | "field" | "chain" | "admin";
+type Screen = "dashboard" | "project-select-field" | "project-select-chain" | "field" | "chain" | "admin";
 
-const emptyJournal = (): FieldJournalData => ({
-  site: "", address: "", date: new Date().toISOString().split("T")[0],
+const emptyJournal = (project?: Project): FieldJournalData => ({
+  site: project?.name ?? "", address: project?.address ?? "", date: new Date().toISOString().split("T")[0],
   readinessCheck: "", drillingTool: "", arrivalTime: new Date().toTimeString().slice(0,5),
   tempStart: "", endTime: "", tempEnd: "", sampler1: "", sampler2: "",
-  client: "", clientRep: "", pid: "", pidOpenAir: "", weather: "",
+  client: project?.client ?? "", clientRep: "", pid: "", pidOpenAir: "", weather: "",
   labCalibValid: "", dailyCalib: "", coldStorage: "", samples: [], signature: ""
 });
 
@@ -21,8 +23,35 @@ type Props = { user: User; onLogout: () => void };
 export default function Dashboard({ user, onLogout }: Props) {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [journalData, setJournalData] = useState<FieldJournalData>(emptyJournal());
+  const [activeProject, setActiveProject] = useState<Project | null>(null);
 
   const today = new Date().toLocaleDateString("he-IL", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+
+  const handleProjectSelectedForField = (project: Project) => {
+    setActiveProject(project);
+    setJournalData(emptyJournal(project));
+    setScreen("field");
+  };
+
+  const handleProjectSelectedForChain = (project: Project) => {
+    setActiveProject(project);
+    setJournalData(emptyJournal(project));
+    setScreen("chain");
+  };
+
+  if (screen === "project-select-field") return (
+    <ProjectSelector
+      onSelect={handleProjectSelectedForField}
+      onBack={() => setScreen("dashboard")}
+    />
+  );
+
+  if (screen === "project-select-chain") return (
+    <ProjectSelector
+      onSelect={handleProjectSelectedForChain}
+      onBack={() => setScreen("dashboard")}
+    />
+  );
 
   if (screen === "field") return (
     <FieldJournalForm
@@ -37,8 +66,9 @@ export default function Dashboard({ user, onLogout }: Props) {
     <ChainOfCustodyForm
       user={user}
       fieldData={journalData}
+      projectName={activeProject?.name}
       onBack={() => setScreen("field")}
-      onDone={() => { setJournalData(emptyJournal()); setScreen("dashboard"); }}
+      onDone={() => { setJournalData(emptyJournal()); setActiveProject(null); setScreen("dashboard"); }}
     />
   );
   if (screen === "admin" && user.isAdmin) return (
@@ -70,7 +100,7 @@ export default function Dashboard({ user, onLogout }: Props) {
         <div className="grid grid-cols-1 gap-3">
           {/* Field Journal */}
           <button
-            onClick={() => setScreen("field")}
+            onClick={() => setScreen("project-select-field")}
             className="card text-right flex items-start gap-4 hover:border-green-200 hover:shadow-md transition-all"
           >
             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -87,7 +117,7 @@ export default function Dashboard({ user, onLogout }: Props) {
 
           {/* Chain of Custody only */}
           <button
-            onClick={() => setScreen("chain")}
+            onClick={() => setScreen("project-select-chain")}
             className="card text-right flex items-start gap-4 hover:border-green-200 hover:shadow-md transition-all"
           >
             <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">

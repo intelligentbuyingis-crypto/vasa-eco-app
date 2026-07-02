@@ -1,3 +1,4 @@
+import { getDropboxToken } from "@/lib/dropboxToken";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -58,10 +59,8 @@ async function uploadProjectsFile(token: string, projects: Project[]): Promise<v
 
 export async function GET() {
   try {
-    const token = process.env.DROPBOX_ACCESS_TOKEN;
-    if (!token) {
-      return NextResponse.json({ error: "DROPBOX_ACCESS_TOKEN not configured" }, { status: 503 });
-    }
+    let token: string;
+    try { token = await getDropboxToken(); } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "Token error" }, { status: 503 }); }
     const projects = await downloadProjectsFile(token);
     return NextResponse.json({ projects });
   } catch (err) {
@@ -74,10 +73,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const token = process.env.DROPBOX_ACCESS_TOKEN;
-    if (!token) {
-      return NextResponse.json({ error: "DROPBOX_ACCESS_TOKEN not configured" }, { status: 503 });
-    }
+    let token: string;
+    try { token = await getDropboxToken(); } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "Token error" }, { status: 503 }); }
 
     const { name, address, client, createdBy } = await req.json();
     if (!name || !name.trim()) {

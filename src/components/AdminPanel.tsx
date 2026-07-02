@@ -221,26 +221,20 @@ export default function AdminPanel({ user, onBack }: Props) {
         </div>
 
         <div className="card">
-          <h3 className="font-medium text-gray-700 mb-2">הגדרות מערכת</h3>
-          <div className="space-y-3">
-            <div>
-              <label className="field-label">שם החברה</label>
-              <input defaultValue="וזה אקולוגיה" />
-            </div>
-            <div>
-              <label className="field-label">כתובת ענן בזק (WebDAV URL)</label>
-              <input placeholder="https://cloud.bezeq.com/dav/vasa/" />
-            </div>
-            <div>
-              <label className="field-label">שם משתמש ענן</label>
-              <input placeholder="username" />
-            </div>
-            <div>
-              <label className="field-label">סיסמת ענן</label>
-              <input type="password" placeholder="••••••••" />
-            </div>
-            <button className="btn-primary text-xs">שמור הגדרות</button>
-          </div>
+          <h3 className="font-medium text-gray-700 mb-3">חיבור Dropbox</h3>
+          <p className="text-sm text-gray-500 mb-3">
+            אם הטוקן פג תוקף או שרוצים לחבר מחדש — לחץ כאן לחיבור קבוע (Refresh Token שלא יפוג).
+          </p>
+          <a
+            href="/api/auth/dropbox/connect"
+            className="btn-primary text-sm flex items-center gap-2 w-fit"
+          >
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+            </svg>
+            חבר Dropbox מחדש
+          </a>
+          <p className="text-xs text-gray-400 mt-2">לאחר החיבור תקבל Refresh Token לשמור ב-Vercel</p>
         </div>
       </div>
     </div>

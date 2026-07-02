@@ -1,3 +1,4 @@
+import { getDropboxToken } from "@/lib/dropboxToken";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -11,13 +12,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const DROPBOX_TOKEN = process.env.DROPBOX_ACCESS_TOKEN;
-
-    if (!DROPBOX_TOKEN) {
-      return NextResponse.json({
-        error: "DROPBOX_ACCESS_TOKEN not configured",
-        instructions: "הגדר DROPBOX_ACCESS_TOKEN ב-Vercel Environment Variables"
-      }, { status: 503 });
+    let DROPBOX_TOKEN: string;
+    try {
+      DROPBOX_TOKEN = await getDropboxToken();
+    } catch (tokenErr) {
+      return NextResponse.json({ error: tokenErr instanceof Error ? tokenErr.message : "Token error" }, { status: 503 });
     }
 
     // Build folder path: /פרויקט/תאריך/קובץ

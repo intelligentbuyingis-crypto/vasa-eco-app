@@ -1,20 +1,25 @@
-// Cache the access token in memory to avoid refreshing on every request
 let cachedToken: string | null = null;
 let tokenExpiresAt: number = 0;
 
 export async function getDropboxToken(): Promise<string> {
   const refreshToken = process.env.DROPBOX_REFRESH_TOKEN;
   const accessToken = process.env.DROPBOX_ACCESS_TOKEN;
+  const appKey = process.env.DROPBOX_APP_KEY;
+  const appSecret = process.env.DROPBOX_APP_SECRET;
 
-  // If we have a refresh token, use it (preferred - never expires)
-  if (refreshToken) {
-    // Return cached token if still valid (tokens last 4 hours, refresh at 3.5)
+  // Debug: log what we have (will show in Vercel logs)
+  console.log("Token check:", {
+    hasRefreshToken: !!refreshToken,
+    hasAccessToken: !!accessToken,
+    hasAppKey: !!appKey,
+    hasAppSecret: !!appSecret,
+    refreshTokenLength: refreshToken?.length ?? 0,
+  });
+
+  if (refreshToken && appKey && appSecret) {
     if (cachedToken && Date.now() < tokenExpiresAt) {
       return cachedToken;
     }
-
-    const clientId = process.env.DROPBOX_APP_KEY!;
-    const clientSecret = process.env.DROPBOX_APP_SECRET!;
 
     const res = await fetch("https://api.dropboxapi.com/oauth2/token", {
       method: "POST",
@@ -22,8 +27,8 @@ export async function getDropboxToken(): Promise<string> {
       body: new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: refreshToken,
-        client_id: clientId,
-        client_secret: clientSecret,
+        client_id: appKey,
+        client_secret: appSecret,
       }),
     });
 
@@ -34,15 +39,15 @@ export async function getDropboxToken(): Promise<string> {
 
     const data = await res.json();
     cachedToken = data.access_token;
-    // Cache for 3.5 hours (token valid for 4h)
     tokenExpiresAt = Date.now() + 3.5 * 60 * 60 * 1000;
     return cachedToken!;
   }
 
-  // Fall back to static access token (short-lived)
   if (accessToken) {
     return accessToken;
   }
 
-  throw new Error("No Dropbox token configured. Set DROPBOX_REFRESH_TOKEN or DROPBOX_ACCESS_TOKEN in Vercel.");
+  throw new Error(
+    `No Dropbox token configured. hasRefresh=${!!refreshToken} hasKey=${!!appKey} hasSecret=${!!appSecret}`
+  );
 }

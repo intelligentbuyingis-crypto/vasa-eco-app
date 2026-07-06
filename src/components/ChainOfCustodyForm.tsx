@@ -74,14 +74,16 @@ const ISRAC_LOGO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKoAAACCCA
 
 function buildPdfHtml(data: ChainOfCustodyData, labSignature: string, forLab?: string): string {
   const labsLabel = data.lab ? data.lab.split(",").filter(Boolean).join(", ") : "—";
-  const sendSamples = data.samples.filter(s => s.sendToLab);
+  const sendSamples = data.samples.filter(s => s.sendToLab || (s.labChoice && s.labChoice !== "לא שולח"));
   const LAB_TESTS_ORDER = ["TPH GRO", "VOC", "SVOC", "PH", "PFAS", "CR+6", "ICP מתכות", "TPH D+O"];
   const genAt = new Date().toLocaleString("he-IL");
 
   const sampleRows = sendSamples.map((s, i) => {
     const bg = i % 2 === 0 ? "#ffffff" : "#f8f8f8";
+    // Use per-sample tests if defined, otherwise fall back to global tests
+    const sampleTests = (s.tests && s.tests.length > 0) ? s.tests : data.tests;
     const testCells = LAB_TESTS_ORDER.map(t => {
-      const checked = data.tests.includes(t);
+      const checked = sampleTests.includes(t);
       return "<td style=\"border:0.5px solid #ccc;padding:2px;text-align:center;font-size:7pt\">" +
         (checked ? "<span style=\"color:#0d6626;font-weight:bold\">&#10003;</span>" : "") +
         "</td>";
@@ -90,9 +92,9 @@ function buildPdfHtml(data: ChainOfCustodyData, labSignature: string, forLab?: s
       "<td style=\"border:0.5px solid #ccc;padding:2px 4px;font-size:7pt\">" + (s.sampleNum || (s.drillNum + "-" + (i + 1))) + "</td>" +
       "<td style=\"border:0.5px solid #ccc;padding:2px;text-align:center;font-size:7pt\">" + (s.depth ? s.depth + "מ'" : "") + "</td>" +
       "<td style=\"border:0.5px solid #ccc;padding:2px;text-align:center;font-size:7pt\">" + (s.time || "") + "</td>" +
-      "<td style=\"border:0.5px solid #ccc;padding:2px;text-align:center;font-size:7pt\">" + (s.notes || "") + "</td>" +
-      "<td style=\"border:0.5px solid #ccc;padding:2px;font-size:7pt\"></td>" +
-      "<td style=\"border:0.5px solid #ccc;padding:2px;font-size:7pt\"></td>" +
+      "<td style=\"border:0.5px solid #ccc;padding:2px;text-align:center;font-size:7pt\">" + (s.samplingTool || s.notes || "") + "</td>" +
+      "<td style=\"border:0.5px solid #ccc;padding:2px;text-align:center;font-size:7pt\">" + (s.numContainers || "") + "</td>" +
+      "<td style=\"border:0.5px solid #ccc;padding:2px;text-align:center;font-size:7pt\">" + (s.sampleType || "") + "</td>" +
       testCells +
       "<td style=\"border:0.5px solid #ccc;padding:2px;text-align:center;font-size:7pt\">" + (s.pid || "") + "</td>" +
       "<td style=\"border:0.5px solid #ccc;padding:2px;font-size:7pt\"></td>" +

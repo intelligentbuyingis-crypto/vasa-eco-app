@@ -2,8 +2,8 @@
 import { useState } from "react";
 import type { User } from "@/lib/users";
 import type { FieldJournalData, SampleRow } from "@/types/forms";
-import { SOIL_TYPES, COLORS, MOISTURE, SMELL, WEATHER, DRILLING_TOOLS } from "@/types/forms";
-import CircleSelect from "./CircleSelect";
+import { SOIL_TYPES, COLORS, MOISTURE, SMELL, WEATHER, DRILLING_TOOLS, SAMPLING_TOOLS, SAMPLE_TYPES, LAB_TESTS, PID_OPTIONS } from "@/types/forms";
+import { getUsers } from "@/lib/users";
 import SignaturePad from "./SignaturePad";
 import DrillChart from "./DrillChart";
 
@@ -15,14 +15,7 @@ type Props = {
   onContinue: () => void;
 };
 
-// Group samples by drill number
 type DrillGroup = { drillNum: string; samples: SampleRow[] };
-
-const newSample = (drillNum: string): SampleRow => ({
-  id: crypto.randomUUID(), drillNum, sampleNum: "", depth: "", time: "",
-  soilType: "", color: "", smell: "", moisture: "", pid: "", pid20: "", notes: "",
-  sendToLab: true
-});
 
 function groupByDrill(samples: SampleRow[]): DrillGroup[] {
   const map = new Map<string, SampleRow[]>();
@@ -33,10 +26,49 @@ function groupByDrill(samples: SampleRow[]): DrillGroup[] {
   return Array.from(map.entries()).map(([drillNum, samples]) => ({ drillNum, samples }));
 }
 
+const newSample = (drillNum: string, depth = ""): SampleRow => ({
+  id: crypto.randomUUID(), drillNum,
+  sampleNum: depth ? `${drillNum}-${depth}` : `${drillNum}-`,
+  depth, time: new Date().toTimeString().slice(0,5),
+  soilType: [], color: [], smell: "", moisture: "", pid: "", pid20: "", notes: "",
+  sendToLab: true, labChoice: "", samplingTool: "", numContainers: "1",
+  sampleType: "ח", tests: [],
+});
+
+// Multi-select circle component
+function MultiCircleSelect({ options, value, onChange }: { options: string[]; value: string[]; onChange: (v: string[]) => void }) {
+  const toggle = (opt: string) => {
+    onChange(value.includes(opt) ? value.filter(x => x !== opt) : [...value, opt]);
+  };
+  return (
+    <div className="flex flex-wrap gap-1">
+      {options.map(opt => (
+        <button key={opt} type="button" onClick={() => toggle(opt)}
+          className={`px-2 py-0.5 text-sm rounded-full border transition-all ${
+            value.includes(opt) ? "border-gray-800 border-2 font-medium bg-gray-50" : "border-transparent text-gray-500"
+          }`}>{opt}</button>
+      ))}
+    </div>
+  );
+}
+
+// Single circle select
+function CircleSelect({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {options.map(opt => (
+        <button key={opt} type="button" onClick={() => onChange(opt === value ? "" : opt)}
+          className={`px-2 py-0.5 text-sm rounded-full border transition-all ${
+            value === opt ? "border-gray-800 border-2 font-medium" : "border-transparent text-gray-500"
+          }`}>{opt}</button>
+      ))}
+    </div>
+  );
+}
+
 function buildFieldJournalHtml(data: FieldJournalData, samplerName: string): string {
   const genAt = new Date().toLocaleString("he-IL");
   const groups = groupByDrill(data.samples);
-
   const drillSections = groups.map(g => {
     const rows = g.samples.map((s, i) => {
       const bg = i % 2 === 0 ? "#ffffff" : "#f8f8f8";
@@ -44,19 +76,17 @@ function buildFieldJournalHtml(data: FieldJournalData, samplerName: string): str
         "<td style=\"border:0.5px solid #ccc;padding:3px;font-size:7.5pt\">" + (s.sampleNum || "#" + (i+1)) + "</td>" +
         "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.depth ? s.depth + "מ'" : "") + "</td>" +
         "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.time || "") + "</td>" +
-        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.soilType || "") + "</td>" +
-        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.color || "") + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (Array.isArray(s.soilType) ? s.soilType.join(", ") : s.soilType) + "</td>" +
+        "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (Array.isArray(s.color) ? s.color.join(", ") : s.color) + "</td>" +
         "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.smell || "") + "</td>" +
         "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.moisture || "") + "</td>" +
         "<td style=\"border:0.5px solid #ccc;padding:3px;text-align:center;font-size:7.5pt\">" + (s.pid || "") + "</td>" +
         "<td style=\"border:0.5px solid #ccc;padding:3px;font-size:7.5pt\">" + (s.notes || "") + "</td>" +
         "</tr>";
     }).join("");
-
     return "<div style=\"margin-bottom:8px\">" +
       "<div style=\"background:#0d6626;color:white;padding:3px 8px;font-weight:bold;font-size:8.5pt\">קידוח " + g.drillNum + "</div>" +
-      "<table style=\"width:100%;border-collapse:collapse\">" +
-      "<thead><tr style=\"background:#c8e6c9\">" +
+      "<table style=\"width:100%;border-collapse:collapse\"><thead><tr style=\"background:#c8e6c9\">" +
       "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">מס' דגימה</th>" +
       "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">עומק</th>" +
       "<th style=\"border:0.5px solid #999;padding:3px;font-size:7pt;color:#0d5520\">שעה</th>" +
@@ -69,45 +99,23 @@ function buildFieldJournalHtml(data: FieldJournalData, samplerName: string): str
       "</tr></thead><tbody>" + rows + "</tbody></table></div>";
   }).join("");
 
-  const sigHtml = data.signature
-    ? "<img src=\"" + data.signature + "\" style=\"max-height:35px;display:block\"/>"
-    : "<div style=\"color:#aaa;font-size:7pt;margin-top:8px\">חתימה לא צורפה</div>";
-
-  return "<!DOCTYPE html>" +
-    "<html dir=\"rtl\" lang=\"he\"><head><meta charset=\"UTF-8\">" +
-    "<style>*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}" +
-    "body{padding:8px;font-size:8pt}@media print{body{padding:0}}</style></head><body>" +
-
+  return "<!DOCTYPE html><html dir=\"rtl\" lang=\"he\"><head><meta charset=\"UTF-8\">" +
+    "<style>*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}body{padding:8px;font-size:8pt}@media print{body{padding:0}}</style></head><body>" +
     "<div style=\"background:#0d6626;color:white;display:flex;align-items:stretch;margin-bottom:6px\">" +
     "<div style=\"flex:1;text-align:center;padding:8px 0\">" +
     "<div style=\"font-size:14pt;font-weight:bold\">וזה אקולוגיה בע&quot;מ</div>" +
     "<div style=\"font-size:10pt\">יומן שדה — טופס 57</div></div></div>" +
-
-    "<table style=\"width:100%;border-collapse:collapse;margin-bottom:6px\">" +
-    "<tr>" +
-    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">האתר:</span><br><b>" + (data.site || "—") + "</b></td>" +
-    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">תאריך:</span><br><b>" + (data.date || "—") + "</b></td>" +
-    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">שעת הגעה-סיום:</span><br><b>" + (data.arrivalTime || "—") + " - " + (data.endTime || "—") + "</b></td>" +
+    "<table style=\"width:100%;border-collapse:collapse;margin-bottom:6px\"><tr>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">האתר:</span><br><b>" + (data.site||"—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">תאריך:</span><br><b>" + (data.date||"—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">שעות:</span><br><b>" + (data.arrivalTime||"—") + " - " + (data.endTime||"—") + "</b></td>" +
     "</tr><tr>" +
-    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">כתובת:</span><br><b>" + (data.address || "—") + "</b></td>" +
-    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">לקוח:</span><br><b>" + (data.client || "—") + "</b></td>" +
-    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">מזג אוויר:</span><br><b>" + (data.weather || "—") + "</b></td>" +
-    "</tr><tr>" +
-    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">דוגם:</span><br><b>" + (data.sampler1 || "—") + "</b></td>" +
-    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">PID:</span><br><b>" + (data.pid || "—") + "</b></td>" +
-    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">בדיקת מוכנות:</span><br><b>" + (data.readinessCheck || "—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">דוגם:</span><br><b>" + (data.sampler1||"—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">מזג אוויר:</span><br><b>" + (Array.isArray(data.weather) ? data.weather.join(", ") : data.weather||"—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:3px 6px\"><span style=\"font-size:6.5pt;color:#666\">PID:</span><br><b>" + (data.pid||"—") + "</b></td>" +
     "</tr></table>" +
-
     drillSections +
-
-    "<div style=\"border:0.5px solid #aaa;padding:5px 8px;background:#f0fff4;margin-top:6px\">" +
-    "<div style=\"font-weight:bold;color:#0d6626;font-size:8pt;margin-bottom:3px\">חתימת הדוגם</div>" +
-    sigHtml +
-    "</div>" +
-
-    "<div style=\"background:#0d6626;color:#b2dfb2;padding:3px 8px;margin-top:6px;font-size:6.5pt\">" +
-    "נוצר: " + genAt + " · וזה אקולוגיה · טופס 57 · דוגם: " + samplerName +
-    "</div>" +
+    "<div style=\"background:#0d6626;color:#b2dfb2;padding:3px 8px;margin-top:6px;font-size:6.5pt\">נוצר: " + genAt + " · וזה אקולוגיה · טופס 57</div>" +
     "</body></html>";
 }
 
@@ -119,43 +127,15 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
   const [cloudUploading, setCloudUploading] = useState(false);
   const [cloudUploaded, setCloudUploaded] = useState(false);
   const [cloudError, setCloudError] = useState("");
+  const [pidCustom, setPidCustom] = useState("");
 
-  const handleCloudUpload = async () => {
-    setCloudUploading(true);
-    setCloudUploaded(false);
-    setCloudError("");
-    try {
-      const html = buildFieldJournalHtml(data, user.name);
-      const dateStr = (data.date || "").replace(/-/g, "");
-      const siteStr = (data.site || "טופס").replace(/\s+/g, "_");
-      const filename = `יומן_שדה_${siteStr}_${dateStr}.html`;
+  const allUsers = getUsers();
+  const samplerNames = allUsers.map(u => u.name);
 
-      const res = await fetch("/api/upload-dropbox", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          htmlContent: html,
-          filename,
-          projectName: data.site,
-          date: data.date,
-        }),
-      });
-      const result = await res.json();
-      if (!res.ok) {
-        throw new Error(result.instructions || result.error || "שגיאה בהעלאה לענן");
-      }
-      setCloudUploaded(true);
-    } catch (e) {
-      setCloudError(e instanceof Error ? e.message : String(e));
-    }
-    setCloudUploading(false);
-  };
+  const set = (k: keyof FieldJournalData, v: string | string[] | boolean) => onChange({ ...data, [k]: v });
 
-  const set = (k: keyof FieldJournalData, v: string) => onChange({ ...data, [k]: v });
-
-  const toggleDrill = (drillNum: string) => {
+  const toggleDrill = (drillNum: string) =>
     setExpandedDrills(prev => ({ ...prev, [drillNum]: !prev[drillNum] }));
-  };
 
   const addDrill = () => {
     const num = newDrillNum.trim() || `B-${groupByDrill(data.samples).length + 1}`;
@@ -169,8 +149,16 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
     onChange({ ...data, samples: [...data.samples, newSample(drillNum)] });
   };
 
-  const updateSample = (id: string, k: keyof SampleRow, v: string) =>
+  const updateSample = (id: string, k: keyof SampleRow, v: string | string[] | boolean) =>
     onChange({ ...data, samples: data.samples.map(s => s.id === id ? { ...s, [k]: v } : s) });
+
+  // Auto-update sampleNum when depth changes
+  const updateDepth = (id: string, depth: string) => {
+    const s = data.samples.find(x => x.id === id);
+    if (!s) return;
+    const autoNum = `${s.drillNum}-${depth}`;
+    onChange({ ...data, samples: data.samples.map(x => x.id === id ? { ...x, depth, sampleNum: autoNum } : x) });
+  };
 
   const removeSample = (id: string) =>
     onChange({ ...data, samples: data.samples.filter(s => s.id !== id) });
@@ -187,7 +175,41 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
     return errs.length === 0;
   };
 
+  const validateSign = () => {
+    if (!data.endTime) { alert("יש להזין שעת סיום לפני סגירת המסמך"); return false; }
+    return true;
+  };
+
+  const handleCloudUpload = async () => {
+    if (!validateSign()) return;
+    setCloudUploading(true);
+    setCloudUploaded(false);
+    setCloudError("");
+    try {
+      const html = buildFieldJournalHtml(data, user.name);
+      const dateStr = (data.date || "").replace(/-/g, "");
+      const siteStr = (data.site || "טופס").replace(/\s+/g, "_");
+      const res = await fetch("/api/upload-dropbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          htmlContent: html,
+          filename: `יומן_שדה_${siteStr}_${dateStr}.html`,
+          projectName: data.site,
+          date: data.date,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "שגיאה");
+      setCloudUploaded(true);
+    } catch (e) {
+      setCloudError(e instanceof Error ? e.message : String(e));
+    }
+    setCloudUploading(false);
+  };
+
   const groups = groupByDrill(data.samples);
+  const effectivePid = data.pid === "אחר" ? pidCustom : data.pid;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -199,15 +221,14 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
         </button>
         <div>
           <div className="font-medium text-sm">יומן שדה · טופס 57</div>
-          <div className="text-green-300 text-xs">{user.name}</div>
+          <div className="text-green-300 text-xs">{data.site} · {user.name}</div>
         </div>
         <div className="flex gap-1.5 mr-auto">
           {(["header","samples","chart","sign"] as const).map((s, i) => (
             <div key={s} className={`w-6 h-6 rounded-full text-xs flex items-center justify-center border ${
               step === s ? "bg-white text-green-900 border-white" :
               ["header","samples","chart"].indexOf(s) < ["header","samples","chart","sign"].indexOf(step)
-                ? "bg-green-700 border-green-600 text-green-200"
-                : "border-green-700 text-green-500"
+                ? "bg-green-700 border-green-600 text-green-200" : "border-green-700 text-green-500"
             }`}>{i+1}</div>
           ))}
         </div>
@@ -218,19 +239,24 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
         {/* STEP 1: Header */}
         {step === "header" && (
           <div className="space-y-4">
+            {headerErrors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm font-medium">⚠ חסרים שדות חובה: {headerErrors.join(", ")}</p>
+              </div>
+            )}
             <div className="card">
-              <p className="section-title">פרטי האתר</p>
+              <p className="section-title">פרטי האתר (ממולאים מהפרויקט)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <label className="field-label">שם האתר <span className="text-red-500">*</span></label>
-                  <input value={data.site} onChange={e => set("site", e.target.value)} placeholder="שם האתר" />
+                  <input value={data.site} onChange={e => { set("site", e.target.value); }} placeholder="שם האתר" />
                 </div>
                 <div className="col-span-2">
                   <label className="field-label">כתובת</label>
-                  <input value={data.address} onChange={e => set("address", e.target.value)} placeholder="כתובת האתר" />
+                  <input value={data.address} onChange={e => set("address", e.target.value)} />
                 </div>
                 <div>
-                  <label className="field-label">תאריך</label>
+                  <label className="field-label">תאריך <span className="text-red-500">*</span></label>
                   <input type="date" value={data.date} onChange={e => set("date", e.target.value)} />
                 </div>
                 <div>
@@ -238,7 +264,7 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
                   <input type="time" value={data.arrivalTime} onChange={e => set("arrivalTime", e.target.value)} />
                 </div>
                 <div>
-                  <label className="field-label">שעת סיום</label>
+                  <label className="field-label">שעת סיום <span className="text-red-500">*</span></label>
                   <input type="time" value={data.endTime} onChange={e => set("endTime", e.target.value)} />
                 </div>
                 <div>
@@ -260,41 +286,53 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
             </div>
 
             <div className="card">
-              <p className="section-title">אנשים</p>
+              <p className="section-title">דוגמים ואנשים</p>
               <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label">דוגם 1 <span className="text-red-500">*</span></label>
+                  <select value={data.sampler1} onChange={e => set("sampler1", e.target.value)}>
+                    <option value="">בחר דוגם...</option>
+                    {samplerNames.map(n => <option key={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label">דוגם 2 (אם יש)</label>
+                  <select value={data.sampler2} onChange={e => set("sampler2", e.target.value)}>
+                    <option value="">—</option>
+                    {samplerNames.map(n => <option key={n}>{n}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label className="field-label">הלקוח</label>
                   <input value={data.client} onChange={e => set("client", e.target.value)} placeholder="שם הלקוח" />
                 </div>
                 <div>
                   <label className="field-label">נציג הלקוח</label>
-                  <input value={data.clientRep} onChange={e => set("clientRep", e.target.value)} placeholder="שם נציג" />
-                </div>
-                <div>
-                  <label className="field-label">PID</label>
-                  <input value={data.pid} onChange={e => set("pid", e.target.value)} placeholder="מס' מכשיר" />
-                </div>
-                <div>
-                  <label className="field-label">PID באוויר הפתוח</label>
-                  <input value={data.pidOpenAir} onChange={e => set("pidOpenAir", e.target.value)} placeholder="ערך ppm" />
-                </div>
-                <div className="col-span-2">
-                  <label className="field-label">דוגם 1 <span className="text-red-500">*</span></label>
-                  <input value={data.sampler1} onChange={e => set("sampler1", e.target.value)} placeholder="שם הדוגם" />
-                </div>
-                <div className="col-span-2">
-                  <label className="field-label">דוגם 2 (אם יש)</label>
-                  <input value={data.sampler2} onChange={e => set("sampler2", e.target.value)} placeholder="שם הדוגם" />
+                  <input value={data.clientRep} onChange={e => set("clientRep", e.target.value)} />
                 </div>
               </div>
             </div>
 
             <div className="card">
-              <p className="section-title">תנאים ובדיקות</p>
+              <p className="section-title">מכשור ותנאים</p>
               <div className="space-y-3">
                 <div>
-                  <label className="field-label">מזג האוויר</label>
-                  <CircleSelect options={WEATHER} value={data.weather} onChange={v => set("weather", v)} />
+                  <label className="field-label">PID</label>
+                  <select value={data.pid} onChange={e => set("pid", e.target.value)}>
+                    <option value="">בחר PID...</option>
+                    {PID_OPTIONS.map(p => <option key={p}>{p}</option>)}
+                  </select>
+                  {data.pid === "אחר" && (
+                    <input className="mt-2" value={pidCustom} onChange={e => setPidCustom(e.target.value)} placeholder="הזן מספר PID" />
+                  )}
+                </div>
+                <div>
+                  <label className="field-label">PID באוויר הפתוח (ppm)</label>
+                  <input value={data.pidOpenAir} onChange={e => set("pidOpenAir", e.target.value)} placeholder="0.0" />
+                </div>
+                <div>
+                  <label className="field-label">מזג האוויר (בחירה מרובה)</label>
+                  <MultiCircleSelect options={WEATHER} value={Array.isArray(data.weather) ? data.weather : []} onChange={v => set("weather", v)} />
                 </div>
                 <div>
                   <label className="field-label">וודא/י בדיקת מוכנות (טפסים 55,56)</label>
@@ -315,58 +353,34 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
               </div>
             </div>
 
-            {headerErrors.length > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                <p className="text-red-600 text-sm font-medium mb-1">⚠ לא ניתן להמשיך — חסרים שדות חובה:</p>
-                <ul className="text-red-500 text-xs list-disc list-inside space-y-0.5">
-                  {headerErrors.map(e => <li key={e}>{e}</li>)}
-                </ul>
-              </div>
-            )}
             <button onClick={() => { if (validateHeader()) setStep("samples"); }} className="btn-primary w-full">
               המשך לדגימות ←
             </button>
           </div>
         )}
 
-        {/* STEP 2: Drills + Samples */}
+        {/* STEP 2: Samples */}
         {step === "samples" && (
           <div>
-            {/* Summary bar */}
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-700">
-                {groups.length} קידוחים · {data.samples.length} דגימות
-              </span>
+              <span className="text-sm font-medium text-gray-700">{groups.length} קידוחים · {data.samples.length} דגימות</span>
               {data.samples.length > 0 && (
-                <button
-                  onClick={() => setStep("chart")}
-                  className="text-xs text-green-700 border border-green-200 rounded-lg px-3 py-1.5 bg-green-50 flex items-center gap-1.5"
-                >
-                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                  </svg>
-                  הצג גרף
+                <button onClick={() => setStep("chart")} className="text-xs text-green-700 border border-green-200 rounded-lg px-3 py-1.5 bg-green-50">
+                  📊 הצג גרף
                 </button>
               )}
             </div>
 
-            {/* Drill groups */}
             {groups.length === 0 && (
-              <div className="card text-center py-8 mb-3">
-                <p className="text-gray-400 text-sm mb-1">אין קידוחים עדיין</p>
-                <p className="text-gray-300 text-xs">הוסף קידוח ראשון למטה</p>
-              </div>
+              <div className="card text-center py-8 mb-3 text-gray-400 text-sm">הוסף קידוח ראשון למטה</div>
             )}
 
             {groups.map(({ drillNum, samples }) => {
               const isOpen = !!expandedDrills[drillNum];
               return (
                 <div key={drillNum} className="card mb-3 overflow-hidden p-0">
-                  {/* Drill header - always visible */}
-                  <button
-                    onClick={() => toggleDrill(drillNum)}
-                    className="w-full flex items-center justify-between p-3 text-right hover:bg-gray-50 transition-colors"
-                  >
+                  <button onClick={() => toggleDrill(drillNum)}
+                    className="w-full flex items-center justify-between p-3 text-right hover:bg-gray-50 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
                         <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#2d6645" strokeWidth="2">
@@ -379,10 +393,7 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={e => { e.stopPropagation(); removeDrill(drillNum); }}
-                        className="text-red-300 hover:text-red-500 p-1"
-                      >
+                      <button onClick={e => { e.stopPropagation(); removeDrill(drillNum); }} className="text-red-300 hover:text-red-500 p-1">
                         <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                         </svg>
@@ -394,78 +405,110 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
                     </div>
                   </button>
 
-                  {/* Samples inside drill */}
                   {isOpen && (
                     <div className="border-t border-gray-100 bg-gray-50 p-3 space-y-3">
                       {samples.map((row, idx) => (
                         <div key={row.id} className="bg-white rounded-xl p-3 border border-gray-100">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">
-                              דגימה {idx + 1}
-                            </span>
-                            <button onClick={() => removeSample(row.id)} className="text-xs text-red-300 hover:text-red-500">
-                              הסר
-                            </button>
+                            <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">דגימה {idx + 1}</span>
+                            <button onClick={() => removeSample(row.id)} className="text-xs text-red-300 hover:text-red-500">הסר</button>
                           </div>
 
-                          {/* Row 1: number, depth, time */}
-                          <div className="grid grid-cols-3 gap-2 mb-2">
-                            <div>
-                              <label className="field-label">מס' דגימה</label>
-                              <input value={row.sampleNum} onChange={e => updateSample(row.id, "sampleNum", e.target.value)} placeholder="1-0.5" />
-                            </div>
+                          {/* Single row for all numeric/time fields */}
+                          <div className="grid grid-cols-4 gap-2 mb-2">
                             <div>
                               <label className="field-label">עומק (מ')</label>
-                              <input type="number" step="0.5" value={row.depth} onChange={e => updateSample(row.id, "depth", e.target.value)} placeholder="0.5" />
+                              <input type="number" step="0.5" value={row.depth}
+                                onChange={e => updateDepth(row.id, e.target.value)} placeholder="0.5" />
+                            </div>
+                            <div>
+                              <label className="field-label">מס' דגימה</label>
+                              <input value={row.sampleNum} onChange={e => updateSample(row.id, "sampleNum", e.target.value)} />
                             </div>
                             <div>
                               <label className="field-label">שעה</label>
                               <input type="time" value={row.time} onChange={e => updateSample(row.id, "time", e.target.value)} />
                             </div>
-                          </div>
-
-                          {/* Row 2: PID values */}
-                          <div className="grid grid-cols-2 gap-2 mb-3">
                             <div>
-                              <label className="field-label">ערך PID (ppm)</label>
+                              <label className="field-label">PID (ppm)</label>
                               <input value={row.pid} onChange={e => updateSample(row.id, "pid", e.target.value)} placeholder="0.0" />
                             </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 mb-2">
                             <div>
-                              <label className="field-label">PID 20%</label>
-                              <input value={row.pid20} onChange={e => updateSample(row.id, "pid20", e.target.value)} placeholder="0.0" />
+                              <label className="field-label">כלי דיגום</label>
+                              <select value={row.samplingTool} onChange={e => updateSample(row.id, "samplingTool", e.target.value)}>
+                                <option value="">בחר...</option>
+                                {SAMPLING_TOOLS.map(t => <option key={t}>{t}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="field-label">מס' אריזות</label>
+                              <input type="number" min="1" max="10" value={row.numContainers} onChange={e => updateSample(row.id, "numContainers", e.target.value)} />
+                            </div>
+                            <div>
+                              <label className="field-label">סוג דגימה</label>
+                              <CircleSelect options={SAMPLE_TYPES} value={row.sampleType} onChange={v => updateSample(row.id, "sampleType", v)} />
                             </div>
                           </div>
 
-                          {/* Circle selects — compact rows */}
-                          <div className="space-y-2 border-t border-gray-50 pt-2">
+                          {/* Circle selects in rows */}
+                          <div className="space-y-1.5 border-t border-gray-50 pt-2">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="field-label mb-0 w-16 flex-shrink-0">סוג קרקע</span>
-                              <CircleSelect options={SOIL_TYPES} value={row.soilType} onChange={v => updateSample(row.id, "soilType", v)} />
+                              <span className="field-label mb-0 w-16 flex-shrink-0 text-xs">סוג קרקע</span>
+                              <MultiCircleSelect options={SOIL_TYPES} value={Array.isArray(row.soilType) ? row.soilType : []} onChange={v => updateSample(row.id, "soilType", v)} />
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="field-label mb-0 w-16 flex-shrink-0">צבע</span>
-                              <CircleSelect options={COLORS} value={row.color} onChange={v => updateSample(row.id, "color", v)} />
+                              <span className="field-label mb-0 w-16 flex-shrink-0 text-xs">צבע</span>
+                              <MultiCircleSelect options={COLORS} value={Array.isArray(row.color) ? row.color : []} onChange={v => updateSample(row.id, "color", v)} />
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="field-label mb-0 w-16 flex-shrink-0">ריח</span>
+                              <span className="field-label mb-0 w-16 flex-shrink-0 text-xs">ריח</span>
                               <CircleSelect options={SMELL} value={row.smell} onChange={v => updateSample(row.id, "smell", v)} />
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="field-label mb-0 w-16 flex-shrink-0">לחות</span>
+                              <span className="field-label mb-0 w-16 flex-shrink-0 text-xs">לחות</span>
                               <CircleSelect options={MOISTURE} value={row.moisture} onChange={v => updateSample(row.id, "moisture", v)} />
                             </div>
-                            <div>
-                              <input value={row.notes} onChange={e => updateSample(row.id, "notes", e.target.value)} placeholder="הערות..." />
+                          </div>
+
+                          {/* Lab selection + tests per sample */}
+                          <div className="border-t border-gray-100 pt-2 mt-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs text-gray-500 flex-shrink-0">שולח ל:</span>
+                              <CircleSelect
+                                options={["מעבדה ראשית","מעבדה משנית","לא שולח"]}
+                                value={row.labChoice || (row.sendToLab ? "מעבדה ראשית" : "לא שולח")}
+                                onChange={v => updateSample(row.id, "labChoice", v)}
+                              />
                             </div>
+                            {row.labChoice !== "לא שולח" && (
+                              <div>
+                                <span className="text-xs text-gray-500">בדיקות:</span>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {LAB_TESTS.map(t => (
+                                    <button key={t} type="button"
+                                      onClick={() => {
+                                        const cur = row.tests || [];
+                                        updateSample(row.id, "tests", cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t]);
+                                      }}
+                                      className={`px-2 py-0.5 rounded text-xs border transition-all ${
+                                        (row.tests||[]).includes(t) ? "bg-green-800 text-white border-green-800" : "bg-white text-gray-500 border-gray-200"
+                                      }`}>{t}</button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-2">
+                            <input value={row.notes} onChange={e => updateSample(row.id, "notes", e.target.value)} placeholder="הערות..." />
                           </div>
                         </div>
                       ))}
-
-                      {/* Add sample to this drill */}
-                      <button
-                        onClick={() => addSampleToDrill(drillNum)}
-                        className="w-full text-xs text-green-700 border border-dashed border-green-300 rounded-lg py-2 hover:bg-green-50 transition-colors"
-                      >
+                      <button onClick={() => addSampleToDrill(drillNum)}
+                        className="w-full text-xs text-green-700 border border-dashed border-green-300 rounded-lg py-2 hover:bg-green-50 transition-colors">
                         + הוסף דגימה לקידוח {drillNum}
                       </button>
                     </div>
@@ -474,20 +517,13 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
               );
             })}
 
-            {/* Add new drill */}
             <div className="card border-dashed border-2 border-gray-200 bg-transparent">
               <p className="text-sm font-medium text-gray-600 mb-2">הוסף קידוח חדש</p>
               <div className="flex gap-2">
-                <input
-                  value={newDrillNum}
-                  onChange={e => setNewDrillNum(e.target.value)}
-                  placeholder={`B-${groups.length + 1}`}
-                  className="flex-1"
-                  onKeyDown={e => e.key === "Enter" && addDrill()}
-                />
-                <button onClick={addDrill} className="btn-primary whitespace-nowrap">
-                  + קידוח
-                </button>
+                <input value={newDrillNum} onChange={e => setNewDrillNum(e.target.value)}
+                  placeholder={`B-${groups.length + 1}`} className="flex-1"
+                  onKeyDown={e => e.key === "Enter" && addDrill()} />
+                <button onClick={addDrill} className="btn-primary whitespace-nowrap">+ קידוח</button>
               </div>
             </div>
 
@@ -513,40 +549,36 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
         {step === "sign" && (
           <div className="space-y-4">
             <div className="card">
-              <p className="section-title">חתימת הדוגם</p>
-              <SignaturePad
-                label="חתום/י עם העט או האצבע:"
-                onChange={v => set("signature", v)}
-              />
+              <p className="section-title">סיום יום עבודה</p>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label className="field-label">שעת סיום <span className="text-red-500">*</span></label>
+                  <input type="time" value={data.endTime} onChange={e => set("endTime", e.target.value)}
+                    className={!data.endTime ? "border-red-300 bg-red-50" : ""} />
+                  {!data.endTime && <p className="text-red-500 text-xs mt-1">⚠ שעת סיום היא שדה חובה לסגירת המסמך</p>}
+                </div>
+                <div>
+                  <label className="field-label">טמפ' סוף (°C)</label>
+                  <input type="number" value={data.tempEnd} onChange={e => set("tempEnd", e.target.value)} />
+                </div>
+              </div>
+              <SignaturePad label="חתימת הדוגם:" onChange={v => set("signature", v)} />
             </div>
 
             <div className="card">
-              <p className="section-title">שמירה אוטומטית בענן</p>
-              {cloudUploaded && (
-                <p className="text-green-600 text-xs mb-2">✓ יומן השדה נשמר בענן! נתיב: {data.site}/{data.date}</p>
-              )}
-              {cloudError && (
-                <p className="text-amber-600 text-xs mb-2">{cloudError}</p>
-              )}
-              <button onClick={handleCloudUpload} disabled={cloudUploading || !data.site}
+              <p className="section-title">שמירה בענן</p>
+              {cloudUploaded && <p className="text-green-600 text-xs mb-2">✓ יומן השדה נשמר בענן!</p>}
+              {cloudError && <p className="text-amber-600 text-xs mb-2">{cloudError}</p>}
+              <button onClick={handleCloudUpload} disabled={cloudUploading || !data.site || !data.endTime}
                 className="w-full flex items-center justify-center gap-2 border border-blue-200 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm hover:bg-blue-100 transition-colors disabled:opacity-50">
-                {cloudUploading ? <><span>⏳</span> מעלה לענן...</> : <>
-                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                  </svg>
-                  שמור יומן שדה בענן (Dropbox)
-                </>}
+                {cloudUploading ? "⏳ מעלה..." : "☁ שמור יומן שדה בענן"}
               </button>
-              <p className="text-xs text-gray-400 mt-1">ישמר בנתיב: {data.site || "פרויקט"}/{data.date}</p>
             </div>
 
             <div className="flex gap-2">
               <button onClick={() => setStep("samples")} className="btn-secondary flex-1">← חזרה</button>
-              <button
-                onClick={onContinue}
-                disabled={!data.site}
-                className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <button onClick={() => { if (validateSign()) onContinue(); }}
+                disabled={!data.site} className="btn-primary flex-1 disabled:opacity-50">
                 המשך לשרשרת משמורת ←
               </button>
             </div>

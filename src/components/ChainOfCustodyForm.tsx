@@ -259,7 +259,7 @@ export default function ChainOfCustodyForm({ user, fieldData, projectName, onBac
     setData(d => ({ ...d, samples: d.samples.map(s => s.id === id ? { ...s, sendToLab: !s.sendToLab } : s) }));
 
   const updateSampleTool = (id: string, v: string) =>
-    setData(d => ({ ...d, samples: d.samples.map(s => s.id === id ? { ...s, notes: v } : s) }));
+    setData(d => ({ ...d, samples: d.samples.map(s => s.id === id ? { ...s, samplingTool: v } : s) }));
 
   const validateHeader = () => {
     const errs = REQUIRED_HEADER.filter(f => !data[f.key as keyof ChainOfCustodyData]).map(f => f.label);
@@ -605,14 +605,16 @@ export default function ChainOfCustodyForm({ user, fieldData, projectName, onBac
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <div>
                         <label className="field-label">כלי דיגום</label>
-                        <select className="text-xs py-1" value={row.notes} onChange={e => updateSampleTool(row.id, e.target.value)}>
+                        <select className="text-xs py-1" value={row.samplingTool || ""} onChange={e => updateSampleTool(row.id, e.target.value)}>
                           <option value="">בחר...</option>
                           {SAMPLING_TOOLS.map(t => <option key={t}>{t}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="field-label">מס&#39; אריזות</label>
-                        <input type="number" min="1" max="10" className="text-xs py-1" placeholder="1" />
+                        <input type="number" min="1" max="10" className="text-xs py-1"
+                          value={row.numContainers || "1"}
+                          onChange={e => setData(d => ({...d, samples: d.samples.map(s => s.id === row.id ? {...s, numContainers: e.target.value} : s)}))} />
                       </div>
                     </div>
                   )}

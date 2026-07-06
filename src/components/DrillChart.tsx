@@ -63,7 +63,7 @@ export default function DrillChart({ samples }: Props) {
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3 mb-4">
-        {Object.entries(SOIL_COLORS).filter(([k]) => k && samples.some(s => s.soilType === k)).map(([soil, color]) => (
+        {Object.entries(SOIL_COLORS).filter(([k]) => k && samples.some(s => Array.isArray(s.soilType) ? s.soilType.includes(k) : s.soilType === k)).map(([soil, color]) => (
           <div key={soil} className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm border border-gray-200 flex-shrink-0" style={{ background: color }} />
             <span className="text-xs text-gray-600">{soil}</span>
@@ -129,8 +129,10 @@ export default function DrillChart({ samples }: Props) {
                     : depthNum + 0.5;
                   const y = 40 + depthNum * SCALE;
                   const blockH = Math.max((nextDepth - depthNum) * SCALE - 2, 8);
-                  const soilColor = SOIL_COLORS[s.soilType] ?? SOIL_COLORS[""];
-                  const smellColor = SMELL_DOT[s.smell] ?? SMELL_DOT[""];
+                  const soilKeyRaw = Array.isArray(s.soilType) ? (s.soilType[0] || "") : (s.soilType as string);
+                  const soilColor = SOIL_COLORS[soilKeyRaw] ?? SOIL_COLORS[""];
+                  const smellKey = Array.isArray(s.smell) ? (s.smell[0] || "") : (s.smell as string);
+                  const smellColor = SMELL_DOT[smellKey] ?? SMELL_DOT[""];
                   const pidVal = parseFloat(s.pid || "0");
 
                   return (

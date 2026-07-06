@@ -23,7 +23,7 @@ const initFromField = (user: User, field?: FieldJournalData): ChainOfCustodyData
   lab: "",
   billedTo: field?.client ?? "",
   address: field?.address ?? "",
-  weather: field?.weather ?? "",
+  weather: field?.weather ?? [],
   landUse: "",
   groundwaterLevel: "",
   pid: field?.pid ?? "",
@@ -50,6 +50,10 @@ const initFromField = (user: User, field?: FieldJournalData): ChainOfCustodyData
   receivedTime: "",
   signature: "",
   samples: field?.samples ?? [],
+  showIsracLogo: field?.showIsracLogo ?? false,
+  checkSamplingDone: false,
+  checkNoReplace: false,
+  checkDeviations: false,
 });
 
 const REQUIRED_HEADER = [
@@ -66,7 +70,9 @@ function RequiredNote({ label }: { label: string }) {
   );
 }
 
-function buildPdfHtml(data: ChainOfCustodyData, labSignature: string): string {
+const ISRAC_LOGO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKoAAACCCAYAAADWiVPZAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAA2hpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMC1jMDYxIDY0LjE0MDk0OSwgMjAxMC8xMi8wNy0xMDo1NzowMSAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0UmVmPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VSZWYjIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDpGOTdGMTE3NDA3MjA2ODExODcxRkE0NUQxNTZERTJBNSIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDpBMEI1M0VFMEFFOTkxMUU4QUUzRkIwNUNBRjk5Rjk3NyIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDpBMEI1M0VERkFFOTkxMUU4QUUzRkIwNUNBRjk5Rjk3NyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ1M1LjEgTWFjaW50b3NoIj4gPHhtcE1NOkRlcml2ZWRGcm9tIHN0UmVmOmluc3RhbmNlSUQ9InhtcC5paWQ6MjgwMzBFODIyMjIwNjgxMTg4QzZENzlERTU3N0JENDUiIHN0UmVmOmRvY3VtZW50SUQ9InhtcC5kaWQ6Rjk3RjExNzQwNzIwNjgxMTg3MUZBNDVEMTU2REUyQTUiLz4gPC9yZGY6RGVzY3Jp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";
+
+function buildPdfHtml(data: ChainOfCustodyData, labSignature: string, forLab?: string): string {
   const labsLabel = data.lab ? data.lab.split(",").filter(Boolean).join(", ") : "—";
   const sendSamples = data.samples.filter(s => s.sendToLab);
   const LAB_TESTS_ORDER = ["TPH GRO", "VOC", "SVOC", "PH", "PFAS", "CR+6", "ICP מתכות", "TPH D+O"];
@@ -116,6 +122,7 @@ function buildPdfHtml(data: ChainOfCustodyData, labSignature: string): string {
 
     "<div style=\"background:#0d6626;color:white;display:flex;align-items:stretch;margin-bottom:3px\">" +
     "<div style=\"background:white;padding:4px 6px;min-width:80px\">" +
+    (data.showIsracLogo ? "<img src=\"" + ISRAC_LOGO_B64 + "\" style=\"height:44px;width:auto\" />" : "") +
     "<img src=\"data:image/png;base64,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\" style=\"height:44px;width:auto\" />" +
     "</div>" +
     "<div style=\"flex:1;text-align:center;padding:6px 0\">" +
@@ -146,6 +153,19 @@ function buildPdfHtml(data: ChainOfCustodyData, labSignature: string): string {
     "קידוח ע\"י קבלן: <b>" + (data.drilledBySubcontractor || "—") + "</b> &nbsp;|&nbsp; " +
     "דיגום ע\"י קבלן: <b>" + (data.sampledBySubcontractor || "—") + "</b> &nbsp;|&nbsp; " +
     "חריגות: <b>" + (data.deviations || "—") + "</b></div>" +
+
+    "<div style=\"border:1px solid #333;padding:6px 10px;margin-bottom:4px;font-size:7pt\">" +
+    "<p style=\"font-weight:bold;margin-bottom:4px\">קריאת PID ומה שבריבוע — הדיגומים הכלליים</p>" +
+    "<div style=\"display:flex;align-items:flex-start;gap:6px;margin-bottom:3px\">" +
+    "<span style=\"font-size:10pt\">" + (data.checkSamplingDone ? "☑" : "☐") + "</span>" +
+    "<span>הדגימות בוצעו בהתאם לנוהל הדיגום</span></div>" +
+    "<div style=\"display:flex;align-items:flex-start;gap:6px;margin-bottom:3px\">" +
+    "<span style=\"font-size:10pt\">" + (data.checkNoReplace ? "☑" : "☐") + "</span>" +
+    "<span>לא בוצע החלפת דגימות</span></div>" +
+    "<div style=\"display:flex;align-items:flex-start;gap:6px\">" +
+    "<span style=\"font-size:10pt\">" + (data.checkDeviations ? "☑" : "☐") + "</span>" +
+    "<span>דגימות בוצעו לפי תוכנית דיגום מאושרת על ידי המשרד להגנת הסביבה</span></div>" +
+    "</div>" +
 
     "<div style=\"background:#0d6626;color:white;padding:4px 8px;font-weight:bold;font-size:9pt\">טופס משמורת לדיגום קרקע ודרישת בדיקות</div>" +
 
@@ -202,6 +222,8 @@ export default function ChainOfCustodyForm({ user, fieldData, projectName, onBac
   const [step, setStep] = useState<"header" | "samples" | "sign">("header");
   const [labSignature, setLabSignature] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfUrl2, setPdfUrl2] = useState<string | null>(null);
+  const [pdfFilename2, setPdfFilename2] = useState("");
   const [pdfFilename, setPdfFilename] = useState("שרשרת_משמורת");
   const [generating, setGenerating] = useState(false);
   const [pdfError, setPdfError] = useState("");
@@ -212,11 +234,12 @@ export default function ChainOfCustodyForm({ user, fieldData, projectName, onBac
   const [emailSent, setEmailSent] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
   const [cloudUploading, setCloudUploading] = useState(false);
+  const [checkErrors, setCheckErrors] = useState<string[]>([]);
   const [cloudUploaded, setCloudUploaded] = useState(false);
   const [cloudError, setCloudError] = useState("");
   const [emailError, setEmailError] = useState("");
 
-  const set = (k: keyof ChainOfCustodyData, v: string | string[]) =>
+  const set = (k: keyof ChainOfCustodyData, v: string | string[] | boolean) =>
     setData(d => ({ ...d, [k]: v }));
 
   const labsArray = data.lab ? data.lab.split(",").filter(Boolean) : [];
@@ -249,18 +272,43 @@ export default function ChainOfCustodyForm({ user, fieldData, projectName, onBac
     return errs.length === 0;
   };
 
+  const validateChecks = () => {
+    const errs: string[] = [];
+    if (!data.checkSamplingDone) errs.push("יש לסמן אישור על ביצוע הדיגום");
+    setCheckErrors(errs);
+    return errs.length === 0;
+  };
+
   const handleGeneratePdf = async () => {
     if (!validateSign()) return;
+    if (!validateChecks()) return;
     setGenerating(true);
     setPdfError("");
     try {
-      const html = buildPdfHtml(data, labSignature);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
       const dateStr = (data.date || "").replace(/-/g, "");
       const siteStr = (data.site || "טופס").replace(/\s+/g, "_");
-      setPdfUrl(url);
-      setPdfFilename("שרשרת_משמורת_" + siteStr + "_" + dateStr);
+      const labs = labsArray.filter(l => l !== "ללא");
+
+      if (labs.length === 2) {
+        // Generate two separate PDFs - one per lab
+        const html1 = buildPdfHtml({...data, lab: labs[0],
+          samples: data.samples.filter(s => s.labChoice === labs[0] || (!s.labChoice && s.sendToLab))
+        }, labSignature);
+        const html2 = buildPdfHtml({...data, lab: labs[1],
+          samples: data.samples.filter(s => s.labChoice === labs[1])
+        }, labSignature);
+        const blob1 = new Blob([html1], { type: "text/html;charset=utf-8" });
+        const blob2 = new Blob([html2], { type: "text/html;charset=utf-8" });
+        setPdfUrl(URL.createObjectURL(blob1));
+        setPdfUrl2(URL.createObjectURL(blob2));
+        setPdfFilename("שרשרת_משמורת_" + siteStr + "_" + labs[0].replace(/\s+/g,"_") + "_" + dateStr);
+        setPdfFilename2("שרשרת_משמורת_" + siteStr + "_" + labs[1].replace(/\s+/g,"_") + "_" + dateStr);
+      } else {
+        const html = buildPdfHtml(data, labSignature);
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        setPdfUrl(URL.createObjectURL(blob));
+        setPdfFilename("שרשרת_משמורת_" + siteStr + "_" + dateStr);
+      }
     } catch (e) {
       setPdfError("שגיאה ביצירת הטופס: " + (e instanceof Error ? e.message : String(e)));
     }
@@ -440,7 +488,19 @@ export default function ChainOfCustodyForm({ user, fieldData, projectName, onBac
                 </div>
                 <div className="col-span-2">
                   <label className="field-label">מזג האוויר</label>
-                  <CircleSelect options={WEATHER} value={data.weather} onChange={v => set("weather", v)} />
+                  <div className="flex flex-wrap gap-1">
+                    {WEATHER.map(opt => (
+                      <button key={opt} type="button"
+                        onClick={() => {
+                          const cur = Array.isArray(data.weather) ? data.weather : [];
+                          set("weather", cur.includes(opt) ? cur.filter((x: string) => x !== opt) : [...cur, opt]);
+                        }}
+                        className={`px-2 py-0.5 text-sm rounded-full border transition-all ${
+                          (Array.isArray(data.weather) ? data.weather : []).includes(opt)
+                            ? "border-gray-800 border-2 font-medium bg-gray-50" : "border-transparent text-gray-500"
+                        }`}>{opt}</button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -585,6 +645,42 @@ export default function ChainOfCustodyForm({ user, fieldData, projectName, onBac
 
         {step === "sign" && (
           <div className="space-y-4">
+            {/* Mandatory checkboxes */}
+            <div className="card">
+              <p className="section-title">אישורים חובה <span className="text-red-500">*</span></p>
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer p-3 border rounded-xl hover:bg-gray-50 transition-colors">
+                  <input type="checkbox" checked={data.checkSamplingDone} onChange={e => set("checkSamplingDone", e.target.checked)}
+                    className="mt-0.5 flex-shrink-0" style={{width:"18px",height:"18px"}} />
+                  <div>
+                    <p className="text-sm font-medium">הדגימות בוצעו בהתאם לנוהל הדיגום</p>
+                    <p className="text-xs text-gray-500">הדיגומים הנכללים בטופס זה בוצעו בהתאם לתוכנית הדיגום, סקר חוזה, ונוהל המעבדה</p>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer p-3 border rounded-xl hover:bg-gray-50 transition-colors">
+                  <input type="checkbox" checked={data.checkNoReplace} onChange={e => set("checkNoReplace", e.target.checked)}
+                    className="mt-0.5 flex-shrink-0" style={{width:"18px",height:"18px"}} />
+                  <div>
+                    <p className="text-sm font-medium">לא בוצע החלפת דגימות</p>
+                    <p className="text-xs text-gray-500">קריאת PID ומה שבריבוע — הדיגומים הכלליים. לא בוצעה החלפה של דגימות</p>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer p-3 border rounded-xl hover:bg-gray-50 transition-colors">
+                  <input type="checkbox" checked={data.checkDeviations} onChange={e => set("checkDeviations", e.target.checked)}
+                    className="mt-0.5 flex-shrink-0" style={{width:"18px",height:"18px"}} />
+                  <div>
+                    <p className="text-sm font-medium">דגימות בוצעו לפי תוכנית דיגום מאושרת על ידי המשרד להגנת הסביבה</p>
+                    <p className="text-xs text-gray-500">אין / יש חריגות (סמן בהתאם בטופס)</p>
+                  </div>
+                </label>
+              </div>
+              {checkErrors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mt-3">
+                  <p className="text-red-600 text-sm">⚠ {checkErrors.join(", ")}</p>
+                </div>
+              )}
+            </div>
+
             <div className="card">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-6 h-6 rounded-full bg-green-100 text-green-700 text-xs flex items-center justify-center font-medium">1</div>
@@ -679,8 +775,19 @@ export default function ChainOfCustodyForm({ user, fieldData, projectName, onBac
                   <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
                   </svg>
-                  פתח והדפס / שמור PDF
+                  {labsArray.length === 2 ? "פתח PDF — " + labsArray[0] : "פתח והדפס / שמור PDF"}
                 </button>
+                {pdfUrl2 && (
+                  <button onClick={() => {
+                    const pw = window.open(pdfUrl2, "_blank");
+                    if (pw) { pw.onload = () => setTimeout(() => pw.print(), 500); }
+                  }} className="btn-primary w-full flex items-center justify-center gap-2 bg-blue-800 border-blue-800 hover:bg-blue-700">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                    </svg>
+                    פתח PDF — {labsArray[1]}
+                  </button>
+                )}
 
                 <div className="card">
                   <p className="section-title">שלח למייל המשרד</p>

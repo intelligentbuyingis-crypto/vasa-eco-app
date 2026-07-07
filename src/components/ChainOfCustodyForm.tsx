@@ -51,6 +51,8 @@ const initFromField = (user: User, field?: FieldJournalData): ChainOfCustodyData
   signature: "",
   samples: field?.samples ?? [],
   showIsracLogo: field?.showIsracLogo ?? false,
+  locationITM_E: field?.locationITM_E as string ?? "",
+  locationITM_N: field?.locationITM_N as string ?? "",
   checkSamplingDone: false,
   checkNoReplace: false,
   checkDeviations: false,
@@ -141,6 +143,7 @@ function buildPdfHtml(data: ChainOfCustodyData, labSignature: string, forLab?: s
     "<td style=\"border:0.5px solid #999;padding:2px 5px\"><span style=\"font-size:6.5pt;color:#666\">לחייב:</span><br><b>" + (data.billedTo || "—") + "</b></td>" +
     "</tr><tr>" +
     "<td style=\"border:0.5px solid #999;padding:2px 5px\"><span style=\"font-size:6.5pt;color:#666\">כתובת:</span><br><b>" + (data.address || "—") + "</b></td>" +
+    "<td style=\"border:0.5px solid #999;padding:2px 5px\"><span style=\"font-size:6.5pt;color:#666\">נ&quot;צ ITM:</span><br><b>" + (data.locationITM_E && data.locationITM_N ? Number(data.locationITM_E).toLocaleString() + " / " + Number(data.locationITM_N).toLocaleString() : "—") + "</b></td>" +
     "<td style=\"border:0.5px solid #999;padding:2px 5px\"><span style=\"font-size:6.5pt;color:#666\">מזג אוויר:</span><br><b>" + (data.weather || "—") + "</b></td>" +
     "<td style=\"border:0.5px solid #999;padding:2px 5px\"><span style=\"font-size:6.5pt;color:#666\">יעוד קרקע:</span><br><b>" + (data.landUse || "—") + "</b></td>" +
     "<td style=\"border:0.5px solid #999;padding:2px 5px\"><span style=\"font-size:6.5pt;color:#666\">PID / מפלס מי תהום:</span><br><b>" + (data.pid || "—") + " / " + (data.groundwaterLevel || "—") + "</b></td>" +

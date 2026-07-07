@@ -29,6 +29,8 @@ const emptyJournal = (p?: ProjectDetails, samplerName = ""): FieldJournalData =>
   reportApprover: p?.reportApprover ?? "",
   landUse: p?.landUse ?? "",
   showIsracLogo: p?.showIsracLogo ?? false,
+  locationITM_E: p?.locationITM_E ?? "",
+  locationITM_N: p?.locationITM_N ?? "",
   endTimeRequired: false,
 });
 

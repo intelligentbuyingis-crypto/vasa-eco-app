@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { getCurrentITM, formatITM } from "@/lib/coordinates";
 
 export type ProjectDetails = {
   id: string;
@@ -10,6 +11,9 @@ export type ProjectDetails = {
   reportApprover: string;
   landUse: string;
   showIsracLogo: boolean;
+  locationITM_E: string;
+  locationITM_N: string;
+  locationAccuracy: string;
   createdAt: string;
   createdBy: string;
 };
@@ -41,9 +45,14 @@ export default function ProjectSelector({ userName, onSelect, onBack }: Props) {
     reportApprover: "",
     landUse: "",
     showIsracLogo: false,
+    locationITM_E: "",
+    locationITM_N: "",
+    locationAccuracy: "",
   });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState("");
 
   const loadProjects = async () => {
     setLoading(true);
@@ -72,6 +81,9 @@ export default function ProjectSelector({ userName, onSelect, onBack }: Props) {
       reportApprover: p.reportApprover || "",
       landUse: p.landUse || "",
       showIsracLogo: p.showIsracLogo || false,
+      locationITM_E: p.locationITM_E || "",
+      locationITM_N: p.locationITM_N || "",
+      locationAccuracy: p.locationAccuracy || "",
     });
     setStep("details");
   };
@@ -89,7 +101,7 @@ export default function ProjectSelector({ userName, onSelect, onBack }: Props) {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "שגיאה ביצירת פרויקט");
       setSelectedBase(result.project);
-      setDetails({ groundwaterLevel: "", reportApprover: "", landUse: "", showIsracLogo: false });
+      setDetails({ groundwaterLevel: "", reportApprover: "", landUse: "", showIsracLogo: false, locationITM_E: "", locationITM_N: "", locationAccuracy: "" });
       setStep("details");
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : "שגיאה ביצירת פרויקט");
@@ -100,6 +112,23 @@ export default function ProjectSelector({ userName, onSelect, onBack }: Props) {
   const handleConfirmDetails = () => {
     if (!selectedBase) return;
     onSelect({ ...selectedBase, ...details });
+  };
+
+  const handleGetGPS = async () => {
+    setGpsLoading(true);
+    setGpsError("");
+    try {
+      const { itm, accuracy } = await getCurrentITM();
+      setDetails(d => ({
+        ...d,
+        locationITM_E: String(itm.E),
+        locationITM_N: String(itm.N),
+        locationAccuracy: String(Math.round(accuracy)),
+      }));
+    } catch (e) {
+      setGpsError(e instanceof Error ? e.message : "שגיאת GPS");
+    }
+    setGpsLoading(false);
   };
 
   // ─── STEP: DETAILS ───
@@ -151,6 +180,68 @@ export default function ProjectSelector({ userName, onSelect, onBack }: Props) {
                   <img src="/israc-logo.png" alt="ISRAC" className="h-8 w-auto" />
                 )}
               </div>
+            </div>
+
+            {/* GPS Location */}
+            <div className="border border-blue-100 bg-blue-50 rounded-xl p-3">
+              <label className="field-label text-blue-800 mb-2 block font-medium">מיקום האתר (נ&quot;צ ITM)</label>
+              <button
+                type="button"
+                onClick={handleGetGPS}
+                disabled={gpsLoading}
+                className="w-full flex items-center justify-center gap-2 bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 mb-3"
+              >
+                {gpsLoading ? (
+                  <><span className="animate-spin">⏳</span> מאתר מיקום GPS...</>
+                ) : (
+                  <>
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    קבל מיקום GPS עכשיו
+                  </>
+                )}
+              </button>
+              {gpsError && (
+                <p className="text-red-500 text-xs mb-2">⚠ {gpsError}</p>
+              )}
+              {details.locationITM_E && details.locationITM_N ? (
+                <div className="bg-white rounded-lg p-3 border border-blue-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-green-600 text-sm">✓ מיקום נרשם</span>
+                    {details.locationAccuracy && (
+                      <span className="text-xs text-gray-400">דיוק: ±{details.locationAccuracy} מ'</span>
+                    )}
+                  </div>
+                  <div className="font-mono text-sm text-gray-800">
+                    <span className="text-gray-500 text-xs">מזרח: </span><strong>{Number(details.locationITM_E).toLocaleString()}</strong>
+                    <span className="mx-2 text-gray-300">/</span>
+                    <span className="text-gray-500 text-xs">צפון: </span><strong>{Number(details.locationITM_N).toLocaleString()}</strong>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="field-label text-xs">נ&quot;צ מזרח (E) — הזנה ידנית</label>
+                    <input type="number" value={details.locationITM_E}
+                      onChange={e => setDetails(d => ({...d, locationITM_E: e.target.value}))}
+                      placeholder="178234" className="text-sm" />
+                  </div>
+                  <div>
+                    <label className="field-label text-xs">נ&quot;צ צפון (N) — הזנה ידנית</label>
+                    <input type="number" value={details.locationITM_N}
+                      onChange={e => setDetails(d => ({...d, locationITM_N: e.target.value}))}
+                      placeholder="665432" className="text-sm" />
+                  </div>
+                </div>
+              )}
+              {details.locationITM_E && details.locationITM_N && (
+                <button type="button" onClick={() => setDetails(d => ({...d, locationITM_E:"", locationITM_N:"", locationAccuracy:""}))}
+                  className="text-xs text-gray-400 underline mt-1">
+                  נקה מיקום
+                </button>
+              )}
             </div>
           </div>
           <div className="card bg-gray-50">

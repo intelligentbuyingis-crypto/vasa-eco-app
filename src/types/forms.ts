@@ -59,6 +59,8 @@ export type FieldJournalData = {
   reportApprover: string;
   landUse: string;
   showIsracLogo: boolean;
+  locationITM_E: string;
+  locationITM_N: string;
   // End time required
   endTimeRequired: boolean;
 };
@@ -97,6 +99,8 @@ export type ChainOfCustodyData = {
   signature: string;
   samples: SampleRow[];
   showIsracLogo: boolean;
+  locationITM_E: string;
+  locationITM_N: string;
   // Checkboxes from form
   checkSamplingDone: boolean;
   checkNoReplace: boolean;

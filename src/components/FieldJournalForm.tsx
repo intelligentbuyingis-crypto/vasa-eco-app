@@ -26,13 +26,17 @@ function groupByDrill(samples: SampleRow[]): DrillGroup[] {
   return Array.from(map.entries()).map(([drillNum, samples]) => ({ drillNum, samples }));
 }
 
-const newSample = (drillNum: string, depth = ""): SampleRow => ({
+const newSample = (drillNum: string, depth = "", prev?: SampleRow): SampleRow => ({
   id: crypto.randomUUID(), drillNum,
   sampleNum: depth ? `${drillNum}-${depth}` : `${drillNum}-`,
   depth, time: new Date().toTimeString().slice(0,5),
-  soilType: [], color: [], smell: "", moisture: "", pid: "", pid20: "", notes: "",
-  sendToLab: true, labChoice: "", samplingTool: "", numContainers: "1",
-  sampleType: "ח", tests: [],
+  // Auto-copy from previous sample if exists
+  soilType: prev?.soilType ?? [], color: prev?.color ?? [],
+  smell: prev?.smell ?? "", moisture: prev?.moisture ?? "",
+  pid: "", pid20: "", notes: "",
+  sendToLab: true, labChoice: "", samplingTool: "",
+  numContainers: prev?.numContainers ?? "1",
+  sampleType: prev?.sampleType ?? "ח", tests: prev?.tests ?? [],
 });
 
 // Multi-select circle component
@@ -129,10 +133,43 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
   const [cloudError, setCloudError] = useState("");
   const [pidCustom, setPidCustom] = useState("");
 
+  const [fetchingWeather, setFetchingWeather] = useState(false);
   const allUsers = getUsers();
   const samplerNames = allUsers.map(u => u.name);
 
   const set = (k: keyof FieldJournalData, v: string | string[] | boolean) => onChange({ ...data, [k]: v });
+
+  const fetchWeather = async () => {
+    if (!navigator.geolocation) return;
+    setFetchingWeather(true);
+    try {
+      const pos = await new Promise<GeolocationPosition>((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 })
+      );
+      const { latitude, longitude } = pos.coords;
+      const resp = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weathercode&timezone=auto`
+      );
+      const json = await resp.json();
+      const temp = Math.round(json.current?.temperature_2m ?? 0);
+      const code = json.current?.weathercode ?? 0;
+      // Map weather code to Hebrew
+      const weatherMap: Record<string, string> = {
+        "0": "שמשי", "1": "שמשי", "2": "מעונן חלקי", "3": "מעונן",
+        "45": "ערפל", "48": "ערפל", "51": "גשום", "53": "גשום", "55": "גשום",
+        "61": "גשום", "63": "גשום", "65": "גשום", "80": "גשום", "81": "גשום",
+        "95": "סופת רעמים",
+      };
+      const wCode = String(code);
+      const wLabel = weatherMap[wCode] ?? "מעונן";
+      const isHot = temp >= 35;
+      const finalLabel = isHot ? "חם מאוד" : temp >= 28 ? "חם" : wLabel;
+      onChange({ ...data, tempStart: String(temp), weather: [finalLabel] });
+    } catch (e) {
+      console.error("Weather fetch failed:", e);
+    }
+    setFetchingWeather(false);
+  };
 
   const toggleDrill = (drillNum: string) =>
     setExpandedDrills(prev => ({ ...prev, [drillNum]: !prev[drillNum] }));
@@ -146,7 +183,9 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
   };
 
   const addSampleToDrill = (drillNum: string) => {
-    onChange({ ...data, samples: [...data.samples, newSample(drillNum)] });
+    const drillSamples = data.samples.filter(s => s.drillNum === drillNum);
+    const prev = drillSamples.length > 0 ? drillSamples[drillSamples.length - 1] : undefined;
+    onChange({ ...data, samples: [...data.samples, newSample(drillNum, "", prev)] });
   };
 
   const updateSample = (id: string, k: keyof SampleRow, v: string | string[] | boolean) =>
@@ -159,6 +198,8 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
     const autoNum = `${s.drillNum}-${depth}`;
     onChange({ ...data, samples: data.samples.map(x => x.id === id ? { ...x, depth, sampleNum: autoNum } : x) });
   };
+
+  const getPidAlert = (pid: string) => parseFloat(pid || "0") > 20;
 
   const removeSample = (id: string) =>
     onChange({ ...data, samples: data.samples.filter(s => s.id !== id) });
@@ -175,10 +216,7 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
     return errs.length === 0;
   };
 
-  const validateSign = () => {
-    if (!data.endTime) { alert("יש להזין שעת סיום לפני סגירת המסמך"); return false; }
-    return true;
-  };
+  const validateSign = () => true;
 
   const handleCloudUpload = async () => {
     if (!validateSign()) return;
@@ -264,8 +302,14 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
                   <input type="time" value={data.arrivalTime} onChange={e => set("arrivalTime", e.target.value)} />
                 </div>
                 <div>
-                  <label className="field-label">שעת סיום <span className="text-red-500">*</span></label>
-                  <input type="time" value={data.endTime} onChange={e => set("endTime", e.target.value)} />
+                  <label className="field-label">טמפ' תחילה (°C)</label>
+                  <div className="flex gap-2">
+                    <input type="number" value={data.tempStart} onChange={e => set("tempStart", e.target.value)} placeholder="--" className="flex-1" />
+                    <button type="button" onClick={fetchWeather} disabled={fetchingWeather}
+                      className="px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs whitespace-nowrap disabled:opacity-50">
+                      {fetchingWeather ? "⏳" : "🌡 GPS"}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="field-label">כלי קידוח</label>
@@ -309,6 +353,13 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
                 <div>
                   <label className="field-label">נציג הלקוח</label>
                   <input value={data.clientRep} onChange={e => set("clientRep", e.target.value)} />
+                </div>
+                <div>
+                  <label className="field-label">מאשר הדו"ח</label>
+                  <select value={data.reportApprover} onChange={e => set("reportApprover", e.target.value)}>
+                    <option value="">בחר מאשר...</option>
+                    {allUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                  </select>
                 </div>
               </div>
             </div>
@@ -431,7 +482,18 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
                             </div>
                             <div>
                               <label className="field-label">PID (ppm)</label>
-                              <input value={row.pid} onChange={e => updateSample(row.id, "pid", e.target.value)} placeholder="0.0" />
+                              <input
+                                value={row.pid}
+                                onChange={e => updateSample(row.id, "pid", e.target.value)}
+                                placeholder="0.0"
+                                className={getPidAlert(row.pid) ? "border-red-400 bg-red-50 font-bold" : ""}
+                              />
+                              {getPidAlert(row.pid) && (
+                                <div className="mt-1 bg-red-100 border border-red-400 rounded-lg px-2 py-1.5 flex items-center gap-1.5">
+                                  <span className="text-red-600 text-sm">⚠️</span>
+                                  <span className="text-red-700 text-xs font-medium">ערך PID גבוה מ-20! נדרשת פעולה</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -549,27 +611,15 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
         {step === "sign" && (
           <div className="space-y-4">
             <div className="card">
-              <p className="section-title">סיום יום עבודה</p>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label className="field-label">שעת סיום <span className="text-red-500">*</span></label>
-                  <input type="time" value={data.endTime} onChange={e => set("endTime", e.target.value)}
-                    className={!data.endTime ? "border-red-300 bg-red-50" : ""} />
-                  {!data.endTime && <p className="text-red-500 text-xs mt-1">⚠ שעת סיום היא שדה חובה לסגירת המסמך</p>}
-                </div>
-                <div>
-                  <label className="field-label">טמפ' סוף (°C)</label>
-                  <input type="number" value={data.tempEnd} onChange={e => set("tempEnd", e.target.value)} />
-                </div>
-              </div>
-              <SignaturePad label="חתימת הדוגם:" onChange={v => set("signature", v)} />
+              <p className="section-title">חתימת הדוגם</p>
+              <SignaturePad label="חתום/י עם העט או האצבע:" onChange={v => set("signature", v)} />
             </div>
 
             <div className="card">
               <p className="section-title">שמירה בענן</p>
               {cloudUploaded && <p className="text-green-600 text-xs mb-2">✓ יומן השדה נשמר בענן!</p>}
               {cloudError && <p className="text-amber-600 text-xs mb-2">{cloudError}</p>}
-              <button onClick={handleCloudUpload} disabled={cloudUploading || !data.site || !data.endTime}
+              <button onClick={handleCloudUpload} disabled={cloudUploading || !data.site}
                 className="w-full flex items-center justify-center gap-2 border border-blue-200 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm hover:bg-blue-100 transition-colors disabled:opacity-50">
                 {cloudUploading ? "⏳ מעלה..." : "☁ שמור יומן שדה בענן"}
               </button>
@@ -579,7 +629,7 @@ export default function FieldJournalForm({ user, data, onChange, onBack, onConti
               <button onClick={() => setStep("samples")} className="btn-secondary flex-1">← חזרה</button>
               <button onClick={() => { if (validateSign()) onContinue(); }}
                 disabled={!data.site} className="btn-primary flex-1 disabled:opacity-50">
-                המשך לשרשרת משמורת ←
+                המשך לסיכום יום ←
               </button>
             </div>
           </div>
